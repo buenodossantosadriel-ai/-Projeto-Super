@@ -34,7 +34,7 @@ Aplicativo de laboratório em Kotlin/Jetpack Compose.
 - Pedidos de captura aguardam confirmação no próprio Android. O compartilhamento de tela também exige a tela oficial de consentimento do Android a cada sessão.
 - A câmera usa CameraX sem prévia na interface principal e publica quadros JPEG periódicos para armazenamento privado; o endpoint recebe links temporários assinados para exibir uma prévia atualizada. Isso ainda não é um fluxo contínuo de vídeo/WebRTC.
 - Sessões de câmera e tela usam serviços em primeiro plano com notificação persistente e ação para parar.
-- O app consulta pedidos enquanto está aberto; durante uma sessão ativa, o serviço em primeiro plano também consulta pedidos de encerramento.
+- O app consulta pedidos enquanto está aberto; durante uma sessão ativa, o serviço em primeiro plano também consulta pedidos de encerramento. Ao encerrar ou revogar o aparelho, os quadros da sessão são removidos do bucket privado.
 - O endpoint de controle está em `supabase/functions/projeto-super-controle/index.ts`. Ele valida JWT do painel ou chave aleatória do dispositivo; nenhuma chave secreta Supabase é incluída no APK.
 - As tabelas de dispositivos, pedidos, sessões e quadros têm RLS habilitado e acesso direto revogado para clientes públicos; a Edge Function usa a chave secreta somente no servidor.
 
