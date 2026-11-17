@@ -1,0 +1,141 @@
+package com.projetosuper.lab
+
+import android.content.Context
+import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+object ControlApi {
+    private const val ENDPOINT = "https://syozyulcoypfqeasdawg.supabase.co/functions/v1/projeto-super-controle"
+    private const val API_KEY = "sb_publishable_KEhlMxn5krWrM4SmfGzGQA_CCW73O-e"
+    private const val PREFS = "projeto_super_device"
+
+    data class Credentials(val deviceId: String, val secret: String, val pairingCode: String?)
+
+    private fun request(
+        payload: JSONObject,
+        deviceSecret: String? = null
+    ): JSONObject {
+        val connection = (URL(ENDPOINT).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = 15000
+            readTimeout = 20000
+            doOutput = true
+            setRequestProperty("apikey", API_KEY)
+            setRequestProperty("Content-Type", "application/json")
+            deviceSecret?.let { setRequestProperty("x-device-secret", it) }
+        }
+        try {
+            connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+            val stream = if (connection.responseCode in 200..299) connection.inputStream else connection.errorStream
+            val text = stream?.bufferedReader()?.use { it.readText() } ?: "{}"
+            val result = JSONObject(text)
+            if (connection.responseCode !in 200..299 || result.optBoolean("ok") == false) {
+                throw IllegalStateException(result.optString("error", "Falha na comunicação com o servidor."))
+            }
+            return result
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    suspend fun ensureRegistered(context: Context): Credentials = withContext(Dispatchers.IO) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val oldId = prefs.getString("device_id", null)
+        val oldSecret = prefs.getString("device_secret", null)
+        if (!oldId.isNullOrBlank() && !oldSecret.isNullOrBlank()) {
+            return@withContext Credentials(oldId, oldSecret, prefs.getString("pairing_code", null))
+        }
+        val secret = UUID.randomUUID().toString() + UUID.randomUUID().toString()
+        val payload = JSONObject()
+            .put("action", "register_device")
+            .put("device_name", android.os.Build.MODEL ?: "Android de laboratório")
+        val result = request(payload, secret)
+        val id = result.getString("device_id")
+        val code = result.getString("pairing_code")
+        prefs.edit().putString("device_id", id).putString("device_secret", secret)
+            .putString("pairing_code", code).apply()
+        Credentials(id, secret, code)
+    }
+
+    suspend fun renewPairing(context: Context): Credentials = withContext(Dispatchers.IO) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo ainda não registrado.")
+        val secret = prefs.getString("device_secret", null) ?: throw IllegalStateException("Chave local indisponível.")
+        val result = request(
+            JSONObject().put("action", "register_device").put("device_id", id)
+                .put("device_name", android.os.Build.MODEL ?: "Android de laboratório"),
+            secret
+        )
+        val code = result.getString("pairing_code")
+        prefs.edit().putString("pairing_code", code).apply()
+        Credentials(id, secret, code)
+    }
+
+    suspend fun poll(context: Context): JSONObject = withContext(Dispatchers.IO) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo não registrado.")
+        val secret = prefs.getString("device_secret", null) ?: throw IllegalStateException("Chave local indisponível.")
+        request(JSONObject().put("action", "device_poll").put("device_id", id), secret)
+    }
+
+    suspend fun decide(context: Context, requestId: String, accept: Boolean): JSONObject = withContext(Dispatchers.IO) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo não registrado.")
+        val secret = prefs.getString("device_secret", null) ?: throw IllegalStateException("Chave local indisponível.")
+        request(
+            JSONObject().put("action", "device_decide").put("device_id", id)
+                .put("request_id", requestId).put("decision", if (accept) "accept" else "reject"),
+            secret
+        )
+    }
+
+    suspend fun uploadFrame(
+        context: Context,
+        sessionId: String,
+        jpeg: ByteArray
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo não registrado.")
+        val secret = prefs.getString("device_secret", null) ?: throw IllegalStateException("Chave local indisponível.")
+        val boundary = "ProjetoSuper-" + UUID.randomUUID().toString()
+        val connection = (URL(ENDPOINT).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = 15000
+            readTimeout = 20000
+            doOutput = true
+            setRequestProperty("apikey", API_KEY)
+            setRequestProperty("x-device-secret", secret)
+            setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+        }
+        try {
+            connection.outputStream.use { out ->
+                fun field(name: String, value: String) {
+                    out.write("--$boundary\r\n".toByteArray())
+                    out.write("Content-Disposition: form-data; name=\"$name\"\r\n\r\n".toByteArray())
+                    out.write(value.toByteArray())
+                    out.write("\r\n".toByteArray())
+                }
+                field("device_id", id)
+                field("session_id", sessionId)
+                out.write("--$boundary\r\n".toByteArray())
+                out.write("Content-Disposition: form-data; name=\"frame\"; filename=\"frame.jpg\"\r\n".toByteArray())
+                out.write("Content-Type: image/jpeg\r\n\r\n".toByteArray())
+                out.write(jpeg)
+                out.write("\r\n--$boundary--\r\n".toByteArray())
+            }
+            val stream = if (connection.responseCode in 200..299) connection.inputStream else connection.errorStream
+            val result = JSONObject(stream?.bufferedReader()?.use { it.readText() } ?: "{}")
+            if (connection.responseCode !in 200..299 || !result.optBoolean("ok")) {
+                throw IllegalStateException(result.optString("error", "Falha ao enviar quadro."))
+            }
+            result
+        } finally {
+            connection.disconnect()
+        }
+    }
+}
