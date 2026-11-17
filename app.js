@@ -58,145 +58,118 @@ arquivoGaleria.addEventListener("change", () => {
   registrar("Uma imagem foi escolhida pelo usuário. Nenhum envio foi realizado.");
 });
 
-// NOTIFICAÇÕES: pede autorização somente após o toque do usuário.
-el("btnNotif").addEventListener("click", async () => {
-  const status = el("statusNotif");
+// PERMISSÕES EM UM ÚNICO BOTÃO.
+// O navegador mantém prompts separados por tipo de permissão.
+el("btnPermissoes").addEventListener("click", () => {
+  const statusNotif = el("statusNotif");
+  const statusLocal = el("statusLocal");
+  const statusCamera = el("statusCamera");
+  const statusMicrofone = el("statusMicrofone");
 
-  if (!("Notification" in window)) {
-    status.textContent = "Este navegador não oferece suporte a notificações web.";
-    registrar("Notificações não são suportadas neste navegador.");
-    return;
+  if (!informarAmbienteSeguro("Permissões", statusCamera)) return;
+
+  registrar("Solicitação geral de permissões iniciada pelo usuário.");
+
+  // Inicia as solicitações diretamente no clique para respeitar a ativação do usuário.
+  let notificacaoPromise = null;
+  if ("Notification" in window) {
+    notificacaoPromise = Notification.permission === "default"
+      ? Notification.requestPermission()
+      : Promise.resolve(Notification.permission);
+  } else {
+    statusNotif.textContent = "Notificações não são suportadas neste navegador.";
   }
 
-  if (!informarAmbienteSeguro("Notificações", status)) return;
-
-  try {
-    let permissao = Notification.permission;
-    if (permissao === "default") {
-      permissao = await Notification.requestPermission();
-    }
-
-    if (permissao !== "granted") {
-      status.textContent = permissao === "denied"
-        ? "Permissão negada. Altere nas configurações do navegador se desejar."
-        : "Permissão não concedida.";
-      registrar(`Permissão de notificações: ${permissao}.`);
-      return;
-    }
-
-    // Em navegadores móveis, a notificação deve ser exibida pelo Service Worker.
-    if ("serviceWorker" in navigator) {
-      const registro = await navigator.serviceWorker.register("./sw.js");
-      await navigator.serviceWorker.ready;
-      await registro.showNotification("Projeto Super", {
-        body: "Notificação de demonstração ativada por você.",
-        tag: "projeto-super-demo"
-      });
-      status.textContent = "Permissão concedida. Notificação de demonstração enviada.";
-    } else {
-      status.textContent = "Permissão concedida, mas este navegador não oferece Service Worker.";
-    }
-
-    registrar("Permissão de notificações concedida; demonstração solicitada.");
-  } catch (erro) {
-    status.textContent = "Não foi possível exibir a notificação neste navegador.";
-    registrar(`Erro nas notificações: ${erro.message}`);
-  }
-});
-
-// LOCALIZAÇÃO: consulta pontual; não acompanha a posição em segundo plano.
-el("btnLocal").addEventListener("click", () => {
-  const status = el("statusLocal");
-  const resultado = el("resultadoLocal");
-
-  if (!("geolocation" in navigator)) {
-    status.textContent = "Geolocalização não é suportada neste navegador.";
-    registrar("Geolocalização não suportada.");
-    return;
-  }
-
-  if (!informarAmbienteSeguro("Localização", status)) return;
-
-  status.textContent = "Aguardando autorização e posição...";
-  resultado.hidden = true;
-  registrar("Solicitação pontual de localização iniciada.");
-
-  navigator.geolocation.getCurrentPosition(
-    (posicao) => {
-      const { latitude, longitude, accuracy } = posicao.coords;
-      status.textContent = "Localização autorizada e recebida.";
-      resultado.textContent =
-        `Latitude: ${latitude.toFixed(6)} | Longitude: ${longitude.toFixed(6)} | Precisão aproximada: ${Math.round(accuracy)} m`;
-      resultado.hidden = false;
-      registrar("Localização recebida e exibida somente nesta página.");
-    },
-    (erro) => {
-      const mensagens = {
-        1: "Permissão de localização negada.",
-        2: "A posição não está disponível no momento.",
-        3: "Tempo limite ao consultar a localização."
-      };
-      const mensagem = mensagens[erro.code] || "Não foi possível obter a localização.";
-      status.textContent = mensagem;
-      registrar(mensagem);
-    },
-    { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
-  );
-});
-
-// CÂMERA: mostra a prévia local. Não grava nem transmite.
-el("btnCamera").addEventListener("click", async () => {
-  const status = el("statusCamera");
-
-  if (!navigator.mediaDevices?.getUserMedia) {
-    status.textContent = "Câmera não disponível. Verifique o navegador e o HTTPS.";
-    registrar("API de câmera indisponível.");
-    return;
-  }
-  if (!informarAmbienteSeguro("Câmera", status)) return;
-
-  try {
+  let midiaPromise = null;
+  if (navigator.mediaDevices?.getUserMedia) {
     pararCamera();
-    cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: "environment" } },
-      audio: false
-    });
-    videoCamera.srcObject = cameraStream;
-    videoCamera.hidden = false;
-    status.textContent = "Câmera ligada. A prévia está visível somente nesta página.";
-    registrar("Câmera ativada com autorização do usuário.");
-  } catch (erro) {
-    status.textContent = erro.name === "NotAllowedError"
-      ? "Acesso à câmera negado."
-      : "Não foi possível iniciar a câmera.";
-    registrar(`Erro na câmera: ${erro.message}`);
-  }
-});
-
-// MICROFONE: ativa a entrada, sem gravar ou enviar áudio.
-el("btnMicrofone").addEventListener("click", async () => {
-  const status = el("statusMicrofone");
-
-  if (!navigator.mediaDevices?.getUserMedia) {
-    status.textContent = "Microfone não disponível. Verifique o navegador e o HTTPS.";
-    registrar("API de microfone indisponível.");
-    return;
-  }
-  if (!informarAmbienteSeguro("Microfone", status)) return;
-
-  try {
     pararMicrofone();
-    microfoneStream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: false
+    midiaPromise = navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" } },
+      audio: true
     });
-    status.textContent = "Microfone ligado. Nenhum áudio está sendo gravado ou transmitido.";
-    registrar("Microfone ativado com autorização do usuário.");
-  } catch (erro) {
-    status.textContent = erro.name === "NotAllowedError"
-      ? "Acesso ao microfone negado."
-      : "Não foi possível iniciar o microfone.";
-    registrar(`Erro no microfone: ${erro.message}`);
+  } else {
+    statusCamera.textContent = "Câmera indisponível neste navegador.";
+    statusMicrofone.textContent = "Microfone indisponível neste navegador.";
+  }
+
+  if ("geolocation" in navigator) {
+    statusLocal.textContent = "Aguardando autorização e posição...";
+    el("resultadoLocal").hidden = true;
+    navigator.geolocation.getCurrentPosition(
+      (posicao) => {
+        const { latitude, longitude, accuracy } = posicao.coords;
+        statusLocal.textContent = "Localização autorizada e recebida.";
+        el("resultadoLocal").textContent =
+          `Latitude: ${latitude.toFixed(6)} | Longitude: ${longitude.toFixed(6)} | Precisão aproximada: ${Math.round(accuracy)} m`;
+        el("resultadoLocal").hidden = false;
+        registrar("Localização recebida e exibida somente nesta página.");
+      },
+      (erro) => {
+        const mensagens = {
+          1: "Permissão de localização negada.",
+          2: "A posição não está disponível no momento.",
+          3: "Tempo limite ao consultar a localização."
+        };
+        const mensagem = mensagens[erro.code] || "Não foi possível obter a localização.";
+        statusLocal.textContent = mensagem;
+        registrar(mensagem);
+      },
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+    );
+  } else {
+    statusLocal.textContent = "Geolocalização não é suportada neste navegador.";
+  }
+
+  if (midiaPromise) {
+    midiaPromise.then((stream) => {
+      cameraStream = stream;
+      microfoneStream = stream;
+      videoCamera.srcObject = stream;
+      videoCamera.hidden = false;
+      statusCamera.textContent = "Câmera ligada. Prévia local ativa.";
+      statusMicrofone.textContent = "Microfone ligado. Nenhum áudio é gravado ou transmitido.";
+      registrar("Câmera e microfone autorizados e ativados.");
+    }).catch((erro) => {
+      const mensagem = erro.name === "NotAllowedError"
+        ? "Acesso à câmera e/ou microfone negado."
+        : "Não foi possível iniciar câmera e microfone.";
+      statusCamera.textContent = mensagem;
+      statusMicrofone.textContent = mensagem;
+      registrar(`Erro em câmera/microfone: ${erro.message}`);
+    });
+  }
+
+  if (notificacaoPromise) {
+    notificacaoPromise.then(async (permissao) => {
+      if (permissao !== "granted") {
+        statusNotif.textContent = permissao === "denied"
+          ? "Permissão de notificações negada."
+          : "Permissão de notificações não concedida.";
+        registrar(`Permissão de notificações: ${permissao}.`);
+        return;
+      }
+      try {
+        if (!("serviceWorker" in navigator)) {
+          statusNotif.textContent = "Permissão concedida, mas Service Worker não é suportado.";
+          return;
+        }
+        const registro = await navigator.serviceWorker.register("./sw.js");
+        await navigator.serviceWorker.ready;
+        await registro.showNotification("Projeto Super", {
+          body: "Notificação de demonstração ativada por você.",
+          tag: "projeto-super-demo"
+        });
+        statusNotif.textContent = "Notificações autorizadas; demonstração enviada.";
+        registrar("Permissão de notificações concedida.");
+      } catch (erro) {
+        statusNotif.textContent = "Permissão concedida, mas não foi possível exibir a notificação.";
+        registrar(`Erro nas notificações: ${erro.message}`);
+      }
+    }).catch((erro) => {
+      statusNotif.textContent = "Não foi possível solicitar notificações.";
+      registrar(`Erro nas notificações: ${erro.message}`);
+    });
   }
 });
 
