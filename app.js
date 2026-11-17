@@ -507,7 +507,7 @@ function renderControlDevices() {
     actions.append(
       makeControlButton("Câmera frontal", "camera_front", device.id),
       makeControlButton("Câmera traseira", "camera_back", device.id),
-      makeControlButton("Tela ao vivo", "screen_share", device.id, true)
+      makeControlButton("Compartilhar tela", "screen_share", device.id, true)
     );
     card.appendChild(actions);
     const revoke = document.createElement("button");
