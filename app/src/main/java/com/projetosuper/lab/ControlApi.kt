@@ -94,6 +94,13 @@ object ControlApi {
         )
     }
 
+    suspend fun stopSession(context: Context, sessionId: String): JSONObject = withContext(Dispatchers.IO) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo não registrado.")
+        val secret = prefs.getString("device_secret", null) ?: throw IllegalStateException("Chave local indisponível.")
+        request(JSONObject().put("action", "stop_session").put("device_id", id).put("session_id", sessionId), secret)
+    }
+
     suspend fun uploadFrame(
         context: Context,
         sessionId: String,
