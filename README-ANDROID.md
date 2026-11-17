@@ -6,7 +6,8 @@ Aplicativo de laboratório em Kotlin/Jetpack Compose.
 - Lista apps com atividade de inicialização visível ao Android.
 - Mostra nome e identificador de pacote; abre somente após toque explícito.
 - Painel de status para câmera, microfone, localização e notificações.
-- Solicita permissões em resposta ao botão do usuário, sem pedir tudo ao iniciar.
+- Solicita câmera, microfone, localização e notificações automaticamente apenas na primeira abertura; registra que a solicitação inicial já ocorreu.
+- Não repete automaticamente os pedidos nos acessos seguintes; se uma permissão for negada ou revogada, o usuário pode abrir as configurações do Android.
 - Usa o Photo Picker oficial para o usuário selecionar uma foto ou vídeo.
 - Não inicia gravação, captura de tela ou envio de arquivos automaticamente.
 - Não monitora nem bloqueia outros aplicativos.
