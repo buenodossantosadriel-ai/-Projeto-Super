@@ -419,7 +419,9 @@ const devicesContainer = el("listaDispositivos");
 let controlDevices = [];
 
 async function controlPost(body) {
-  const session = await ensureSession();
+  const { data } = await supabase.auth.getSession();
+  const session = data.session;
+  if (!session) throw new Error("Entre com a conta de administrador para usar o painel.");
   const response = await fetch(CONTROL_ENDPOINT, {
     method: "POST",
     headers: {
@@ -573,8 +575,51 @@ el("btnParearDispositivo")?.addEventListener("click", async () => {
   }
 });
 
-if (devicesContainer) {
-  refreshControlDevices();
-  window.setInterval(refreshControlDevices, 5000);
-  window.setInterval(refreshControlFrames, 1500);
+let controlPollingStarted = false;
+function showAdminPanel(isAdmin) {
+  el("adminLogin").hidden = isAdmin;
+  el("remoteControl").hidden = !isAdmin;
+  if (isAdmin && !controlPollingStarted) {
+    controlPollingStarted = true;
+    refreshControlDevices();
+    window.setInterval(refreshControlDevices, 5000);
+    window.setInterval(refreshControlFrames, 1500);
+  }
 }
+async function validateAdminSession(session) {
+  const email = session?.user?.email?.toLowerCase();
+  if (email !== "elisareisrodrigues05@gmail.com") {
+    showAdminPanel(false);
+    if (session) await supabase.auth.signOut();
+    setStatus("statusAdminLogin", "Esta conta não tem autorização para acessar o painel.");
+    return false;
+  }
+  showAdminPanel(true);
+  setStatus("statusAdminLogin", "Administrador autenticado.");
+  return true;
+}
+el("btnAdminLogin")?.addEventListener("click", async () => {
+  const email = el("adminEmail").value.trim().toLowerCase();
+  const password = el("adminPassword").value;
+  if (!email || !password) return setStatus("statusAdminLogin", "Informe e-mail e senha.");
+  el("btnAdminLogin").disabled = true;
+  setStatus("statusAdminLogin", "Validando acesso...");
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    await validateAdminSession(data.session);
+    el("adminPassword").value = "";
+  } catch (error) {
+    setStatus("statusAdminLogin", "Não foi possível entrar. Confira os dados e tente novamente.");
+  } finally {
+    el("btnAdminLogin").disabled = false;
+  }
+});
+supabase.auth.onAuthStateChange((_event, session) => {
+  if (!session) showAdminPanel(false);
+  else queueMicrotask(() => validateAdminSession(session));
+});
+supabase.auth.getSession().then(({ data }) => {
+  if (data.session) validateAdminSession(data.session);
+  else showAdminPanel(false);
+});
