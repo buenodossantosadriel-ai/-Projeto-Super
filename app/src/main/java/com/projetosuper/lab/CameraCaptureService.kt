@@ -181,7 +181,12 @@ class CameraCaptureService : LifecycleService() {
                             }
                         }
                     }
-                } catch (_: Exception) { }
+                } catch (error: Exception) {
+                    if (error.message?.contains("Chave do dispositivo inválida") == true) {
+                        stopCapture(remoteAlreadyStopped = true)
+                        return@launch
+                    }
+                }
                 delay(3000)
             }
         }
