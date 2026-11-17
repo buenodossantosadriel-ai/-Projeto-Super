@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -24,6 +25,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -67,8 +69,25 @@ class MainActivity : ComponentActivity() {
 
             val photoPicker = rememberLauncherForActivityResult(
                 ActivityResultContracts.PickVisualMedia()
-            ) { uri ->
-                selectedMedia.value = uri
+            ) { uri -> selectedMedia.value = uri }
+
+            // Solicita o conjunto inicial apenas uma vez. Se algo for negado,
+            // o usuário poderá abrir as configurações do Android manualmente.
+            LaunchedEffect(Unit) {
+                val prefs = context.getSharedPreferences("projeto_super_prefs", MODE_PRIVATE)
+                if (!prefs.getBoolean("initial_permissions_requested", false)) {
+                    prefs.edit().putBoolean("initial_permissions_requested", true).apply()
+                    val requested = mutableListOf(
+                        Manifest.permission.CAMERA,
+                        Manifest.permission.RECORD_AUDIO,
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    )
+                    if (Build.VERSION.SDK_INT >= 33) {
+                        requested.add(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                    permissionLauncher.launch(requested.toTypedArray())
+                }
             }
 
             fun granted(permission: String): Boolean =
@@ -91,8 +110,9 @@ class MainActivity : ComponentActivity() {
                             Text("Projeto Super", style = MaterialTheme.typography.headlineMedium)
                             Text("Laboratório Android — controle transparente")
                             Text(
-                                "As permissões são solicitadas somente quando você toca no botão correspondente. " +
-                                    "Conceder uma permissão não inicia gravação nem envia dados."
+                                "Na primeira abertura, o Android apresenta as permissões solicitadas. " +
+                                    "Elas não são solicitadas novamente automaticamente. Conceder acesso " +
+                                    "não inicia captura nem envia dados."
                             )
                         }
                         item {
@@ -104,21 +124,16 @@ class MainActivity : ComponentActivity() {
                             PermissionRow("Notificações", notificationsGranted)
                             Button(
                                 onClick = {
-                                    val requested = mutableListOf(
-                                        Manifest.permission.CAMERA,
-                                        Manifest.permission.RECORD_AUDIO,
-                                        Manifest.permission.ACCESS_FINE_LOCATION,
-                                        Manifest.permission.ACCESS_COARSE_LOCATION
+                                    val settingsIntent = Intent(
+                                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                        Uri.parse("package:${context.packageName}")
                                     )
-                                    if (Build.VERSION.SDK_INT >= 33) {
-                                        requested.add(Manifest.permission.POST_NOTIFICATIONS)
-                                    }
-                                    permissionLauncher.launch(requested.toTypedArray())
+                                    context.startActivity(settingsIntent)
                                 },
                                 modifier = Modifier.fillMaxWidth()
-                            ) { Text("Solicitar permissões") }
+                            ) { Text("Abrir configurações de permissões") }
                             Text(
-                                "O Android pode negar ou limitar permissões. Você pode revogá-las nas configurações do aparelho.",
+                                "Se uma permissão for negada ou revogada, altere-a manualmente nas configurações do Android.",
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Button(
@@ -157,9 +172,7 @@ class MainActivity : ComponentActivity() {
                                         Text(app.label, style = MaterialTheme.typography.titleMedium)
                                         Text(app.packageName, style = MaterialTheme.typography.bodySmall)
                                     }
-                                    Button(onClick = { openApp(app.packageName) }) {
-                                        Text("Abrir")
-                                    }
+                                    Button(onClick = { openApp(app.packageName) }) { Text("Abrir") }
                                 }
                             }
                         }
