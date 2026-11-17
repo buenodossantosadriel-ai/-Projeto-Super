@@ -158,7 +158,13 @@ class MainActivity : ComponentActivity() {
                             }
                             val requests = response.optJSONArray("requests")
                             if (pendingRequest.value == null && requests != null && requests.length() > 0) {
-                                pendingRequest.value = requests.getJSONObject(0)
+                                for (i in 0 until requests.length()) {
+                                    val candidate = requests.getJSONObject(i)
+                                    if (candidate.optString("action") != "stop_session") {
+                                        pendingRequest.value = candidate
+                                        break
+                                    }
+                                }
                             }
                             deviceError.value = null
                         } catch (error: Exception) {
