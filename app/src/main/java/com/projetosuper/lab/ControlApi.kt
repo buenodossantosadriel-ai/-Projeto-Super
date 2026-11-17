@@ -1,6 +1,14 @@
 package com.projetosuper.lab
 
 import android.content.Context
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
@@ -13,6 +21,42 @@ object ControlApi {
     private const val ENDPOINT = "https://syozyulcoypfqeasdawg.supabase.co/functions/v1/projeto-super-controle"
     private const val API_KEY = "sb_publishable_KEhlMxn5krWrM4SmfGzGQA_CCW73O-e"
     private const val PREFS = "projeto_super_device"
+    private const val KEY_ALIAS = "projeto_super_device_secret_v1"
+
+    private fun secretKey(): SecretKey {
+        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        val existing = store.getKey(KEY_ALIAS, null) as? SecretKey
+        if (existing != null) return existing
+        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        generator.init(
+            KeyGenParameterSpec.Builder(
+                KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+            ).setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setRandomizedEncryptionRequired(true)
+                .build()
+        )
+        return generator.generateKey()
+    }
+
+    private fun encryptSecret(secret: String): String {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey())
+        val encrypted = cipher.doFinal(secret.toByteArray(Charsets.UTF_8))
+        return Base64.encodeToString(cipher.iv + encrypted, Base64.NO_WRAP)
+    }
+
+    private fun decryptSecret(value: String): String {
+        val bytes = Base64.decode(value, Base64.NO_WRAP)
+        require(bytes.size > 12) { "Chave local inválida." }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, secretKey(), GCMParameterSpec(128, bytes.copyOfRange(0, 12)))
+        return String(cipher.doFinal(bytes.copyOfRange(12, bytes.size)), Charsets.UTF_8)
+    }
+
+    private fun loadSecret(prefs: android.content.SharedPreferences): String? =
+        prefs.getString("device_secret_enc", null)?.let { decryptSecret(it) }
 
     data class Credentials(val deviceId: String, val secret: String, val pairingCode: String?)
 
@@ -46,7 +90,7 @@ object ControlApi {
     suspend fun ensureRegistered(context: Context): Credentials = withContext(Dispatchers.IO) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val oldId = prefs.getString("device_id", null)
-        val oldSecret = prefs.getString("device_secret", null)
+        val oldSecret = loadSecret(prefs)
         if (!oldId.isNullOrBlank() && !oldSecret.isNullOrBlank()) {
             return@withContext Credentials(oldId, oldSecret, prefs.getString("pairing_code", null))
         }
@@ -57,7 +101,7 @@ object ControlApi {
         val result = request(payload, secret)
         val id = result.getString("device_id")
         val code = result.getString("pairing_code")
-        prefs.edit().putString("device_id", id).putString("device_secret", secret)
+        prefs.edit().putString("device_id", id).putString("device_secret_enc", encryptSecret(secret))
             .putString("pairing_code", code).apply()
         Credentials(id, secret, code)
     }
@@ -65,7 +109,7 @@ object ControlApi {
     suspend fun renewPairing(context: Context): Credentials = withContext(Dispatchers.IO) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo ainda não registrado.")
-        val secret = prefs.getString("device_secret", null) ?: throw IllegalStateException("Chave local indisponível.")
+        val secret = loadSecret(prefs) ?: throw IllegalStateException("Chave local indisponível.")
         val result = request(
             JSONObject().put("action", "register_device").put("device_id", id)
                 .put("device_name", android.os.Build.MODEL ?: "Android de laboratório"),
