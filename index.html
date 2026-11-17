@@ -81,6 +81,19 @@
       <p id="statusRelatorio" class="status" aria-live="polite">Nenhum relatório enviado.</p>
     </section>
 
+
+    <section class="card" id="remoteControl">
+      <div class="card-heading"><span class="emoji">📡</span><div>
+        <h2>Dispositivos Android vinculados</h2>
+        <p>Vincule o aparelho de laboratório pelo código exibido no app. Cada pedido de câmera ou tela precisa ser aceito no próprio Android.</p>
+      </div></div>
+      <label for="pairingCode">Código de pareamento de 8 dígitos</label>
+      <input id="pairingCode" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="00000000">
+      <button id="btnParearDispositivo" type="button">Vincular aparelho</button>
+      <p id="statusControle" class="status" aria-live="polite">Aguardando conexão segura.</p>
+      <div id="listaDispositivos" class="device-list"></div>
+    </section>
+
     <section class="card log-card">
       <h2>Registro de atividades</h2>
       <ol id="log" aria-live="polite"><li>Laboratório iniciado. Nenhum arquivo foi enviado.</li></ol>
