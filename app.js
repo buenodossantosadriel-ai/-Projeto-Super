@@ -556,7 +556,7 @@ async function refreshControlFrames() {
 
 el("btnParearDispositivo")?.addEventListener("click", async () => {
   const code = el("pairingCode").value.trim();
-  if (!/^\\d{8}$/.test(code)) {
+  if (!/^\d{8}$/.test(code)) {
     controlMessage("Digite o código de pareamento de 8 dígitos.", true);
     return;
   }
