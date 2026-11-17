@@ -104,6 +104,7 @@ Deno.serve(async (req: Request) => {
         await admin.storage.from(BUCKET).remove([path]);
         return respond({ ok: false, error: "Falha ao registrar quadro." }, 500);
       }
+      await admin.from("projeto_super_device_sessions").update({ last_frame_at: new Date().toISOString() }).eq("id", sessionId);
       // Mantém apenas os 90 quadros mais recentes por sessão.
       const { data: oldFrames } = await admin.from("projeto_super_live_frames").select("id,storage_path")
         .eq("session_id", sessionId).order("created_at", { ascending: false }).range(90, 500);
@@ -208,10 +209,17 @@ Deno.serve(async (req: Request) => {
       const devices = [];
       for (const device of data || []) {
         const { data: active } = await admin.from("projeto_super_device_sessions")
-          .select("id,session_type,started_at").eq("device_id", device.id)
+          .select("id,session_type,started_at,last_frame_at").eq("device_id", device.id)
           .eq("owner_user_id", owner.id).eq("status", "active")
           .order("started_at", { ascending: false }).limit(1).maybeSingle();
-        devices.push({ ...device, active_session: active || null });
+        if (active && Date.now() - new Date(active.last_frame_at).getTime() > 45000) {
+          await admin.from("projeto_super_device_sessions").update({
+            status: "stopped", stopped_at: new Date().toISOString(),
+          }).eq("id", active.id).eq("status", "active");
+          devices.push({ ...device, active_session: null });
+        } else {
+          devices.push({ ...device, active_session: active || null });
+        }
       }
       return respond({ ok: true, devices });
     }
@@ -225,12 +233,20 @@ Deno.serve(async (req: Request) => {
       const { data: device } = await admin.from("projeto_super_devices").select("id")
         .eq("id", deviceId).eq("owner_user_id", owner.id).eq("status", "paired").maybeSingle();
       if (!device) return respond({ ok: false, error: "Dispositivo não encontrado." }, 404);
-      const { data: activeSession } = await admin.from("projeto_super_device_sessions").select("id")
+      const { data: activeSession } = await admin.from("projeto_super_device_sessions").select("id,last_frame_at")
         .eq("device_id", deviceId).eq("owner_user_id", owner.id).eq("status", "active").limit(1);
-      if (requestedAction === "stop_session" && !activeSession?.length) {
+      let hasActiveSession = Boolean(activeSession?.length);
+      if (hasActiveSession && activeSession?.[0]?.last_frame_at &&
+          Date.now() - new Date(activeSession[0].last_frame_at).getTime() > 45000) {
+        await admin.from("projeto_super_device_sessions").update({
+          status: "stopped", stopped_at: new Date().toISOString(),
+        }).eq("id", activeSession[0].id).eq("status", "active");
+        hasActiveSession = false;
+      }
+      if (requestedAction === "stop_session" && !hasActiveSession) {
         return respond({ ok: false, error: "Não há sessão ativa para encerrar." }, 409);
       }
-      if (requestedAction !== "stop_session" && activeSession?.length) {
+      if (requestedAction !== "stop_session" && hasActiveSession) {
         return respond({ ok: false, error: "Encerre a sessão atual antes de iniciar outra." }, 409);
       }
       const { data: existing } = await admin.from("projeto_super_control_requests").select("id")
