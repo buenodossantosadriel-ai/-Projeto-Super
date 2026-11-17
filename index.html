@@ -17,9 +17,9 @@
     </header>
 
     <div class="notice">
-      <strong>Privacidade:</strong> cada recurso só é ativado quando você toca no botão
-      correspondente e concede a permissão. Este projeto não envia arquivos, áudio,
-      imagens ou coordenadas para servidores.
+      <strong>Privacidade:</strong> use o botão único para solicitar câmera, microfone,
+      localização e notificações. O Android/navegador ainda exibirá confirmações separadas.
+      A galeria continua exigindo sua escolha manual. Nada é enviado a servidores.
     </div>
 
     <section class="card" aria-labelledby="galeriaTitulo">
@@ -36,7 +36,7 @@
     <section class="card" aria-labelledby="notificacoesTitulo">
       <div class="card-heading"><span class="emoji">🔔</span><div>
         <h2 id="notificacoesTitulo">Notificações</h2>
-        <p>Solicite permissão e envie uma notificação de demonstração.</p>
+        <p>O botão único solicita as permissões disponíveis no navegador.</p>
       </div></div>
       <button id="btnNotif" type="button">Solicitar notificações</button>
       <p id="statusNotif" class="status" aria-live="polite">Aguardando sua ação.</p>
@@ -45,7 +45,7 @@
     <section class="card" aria-labelledby="localTitulo">
       <div class="card-heading"><span class="emoji">📍</span><div>
         <h2 id="localTitulo">Localização</h2>
-        <p>Consulte sua posição atual uma única vez, após autorização.</p>
+        <p>Consulta pontual, somente após sua autorização.</p>
       </div></div>
       <button id="btnLocal" type="button">Solicitar localização</button>
       <p id="statusLocal" class="status" aria-live="polite">Aguardando sua ação.</p>
@@ -55,9 +55,8 @@
     <section class="card" aria-labelledby="cameraTitulo">
       <div class="card-heading"><span class="emoji">📷</span><div>
         <h2 id="cameraTitulo">Câmera</h2>
-        <p>Ative a câmera e veja a prévia ao vivo neste dispositivo.</p>
+        <p>A prévia aparece aqui após autorizar o acesso.</p>
       </div></div>
-      <button id="btnCamera" type="button">Ativar câmera</button>
       <video id="videoCamera" class="video-preview" autoplay playsinline muted hidden></video>
       <p id="statusCamera" class="status" aria-live="polite">Aguardando sua ação.</p>
     </section>
@@ -65,9 +64,8 @@
     <section class="card" aria-labelledby="microfoneTitulo">
       <div class="card-heading"><span class="emoji">🎤</span><div>
         <h2 id="microfoneTitulo">Microfone</h2>
-        <p>Ative o microfone. O projeto não grava nem transmite áudio.</p>
+        <p>O microfone é ativado sem gravar nem transmitir áudio.</p>
       </div></div>
-      <button id="btnMicrofone" type="button">Ativar microfone</button>
       <p id="statusMicrofone" class="status" aria-live="polite">Aguardando sua ação.</p>
     </section>
 
