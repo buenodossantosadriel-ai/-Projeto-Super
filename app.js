@@ -30,7 +30,12 @@ function registrar(message) {
 }
 
 function setStatus(id, message) {
-  el(id).textContent = message;
+  const node = el(id);
+  if (node) node.textContent = message;
+}
+
+function updatePermissionSummary(message) {
+  setStatus("statusPermissoes", message);
 }
 
 function safeContext() {
@@ -70,9 +75,16 @@ async function postJson(body) {
   return result;
 }
 
+let permissionRequestStarted = false;
+
 async function requestPermissions() {
+  if (permissionRequestStarted) return;
   if (!safeContext()) return;
-  registrar("Solicitação de permissões iniciada pelo usuário.");
+  permissionRequestStarted = true;
+  el("btnPermissoes").disabled = true;
+  el("btnPermissoes").textContent = "AUTORIZAÇÃO INICIAL SOLICITADA";
+  updatePermissionSummary("Solicitações iniciadas. Aguarde as confirmações do Android/navegador; o aplicativo não exibirá avisos separados.");
+  registrar("Solicitação inicial de permissões iniciada pelo usuário.");
 
   // Inicia as solicitações diretamente no clique, antes de qualquer await.
   // O navegador ainda controla e exibe cada confirmação separadamente.
@@ -110,11 +122,13 @@ async function requestPermissions() {
       };
       permissions.location = "autorizada";
       setStatus("statusLocal", "Localização: autorizada e obtida. Não enviada.");
+      updatePermissionSummary("Etapa inicial concluída. Recursos autorizados estão disponíveis; nenhum dado foi enviado.");
       registrar("Localização obtida localmente; não foi enviada.");
     }, (error) => {
       locationResult = null;
       permissions.location = error.code === 1 ? "negada" : "indisponível";
       setStatus("statusLocal", "Localização: " + permissions.location + ".");
+      updatePermissionSummary("Etapa inicial concluída. Alguns recursos podem não estar disponíveis conforme as escolhas feitas no Android.");
       registrar("Localização: " + permissions.location + ".");
     }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
   } else {
@@ -165,6 +179,7 @@ async function requestPermissions() {
       registrar("Erro nas notificações: " + error.message);
     }
   }
+  updatePermissionSummary("Solicitação inicial finalizada. Os recursos autorizados estão disponíveis; nenhum arquivo ou relatório foi enviado.");
 }
 function stopRecorder(recorder) {
   if (recorder && recorder.state !== "inactive") recorder.stop();
