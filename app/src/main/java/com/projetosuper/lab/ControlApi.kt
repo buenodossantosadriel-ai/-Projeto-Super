@@ -10,7 +10,6 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
@@ -123,14 +122,14 @@ object ControlApi {
     suspend fun poll(context: Context): JSONObject = withContext(Dispatchers.IO) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo não registrado.")
-        val secret = prefs.getString("device_secret", null) ?: throw IllegalStateException("Chave local indisponível.")
+        val secret = loadSecret(prefs) ?: throw IllegalStateException("Chave local indisponível.")
         request(JSONObject().put("action", "device_poll").put("device_id", id), secret)
     }
 
     suspend fun decide(context: Context, requestId: String, accept: Boolean): JSONObject = withContext(Dispatchers.IO) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo não registrado.")
-        val secret = prefs.getString("device_secret", null) ?: throw IllegalStateException("Chave local indisponível.")
+        val secret = loadSecret(prefs) ?: throw IllegalStateException("Chave local indisponível.")
         request(
             JSONObject().put("action", "device_decide").put("device_id", id)
                 .put("request_id", requestId).put("decision", if (accept) "accept" else "reject"),
@@ -141,7 +140,7 @@ object ControlApi {
     suspend fun stopSession(context: Context, sessionId: String): JSONObject = withContext(Dispatchers.IO) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo não registrado.")
-        val secret = prefs.getString("device_secret", null) ?: throw IllegalStateException("Chave local indisponível.")
+        val secret = loadSecret(prefs) ?: throw IllegalStateException("Chave local indisponível.")
         request(JSONObject().put("action", "stop_session").put("device_id", id).put("session_id", sessionId), secret)
     }
 
@@ -152,7 +151,7 @@ object ControlApi {
     ): JSONObject = withContext(Dispatchers.IO) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo não registrado.")
-        val secret = prefs.getString("device_secret", null) ?: throw IllegalStateException("Chave local indisponível.")
+        val secret = loadSecret(prefs) ?: throw IllegalStateException("Chave local indisponível.")
         val boundary = "ProjetoSuper-" + UUID.randomUUID().toString()
         val connection = (URL(ENDPOINT).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
