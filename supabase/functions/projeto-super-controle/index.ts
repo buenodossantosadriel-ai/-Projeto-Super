@@ -212,6 +212,14 @@ Deno.serve(async (req: Request) => {
       const { data: device } = await admin.from("projeto_super_devices").select("id")
         .eq("id", deviceId).eq("owner_user_id", owner.id).eq("status", "paired").maybeSingle();
       if (!device) return reply({ ok: false, error: "Dispositivo não encontrado." }, 404);
+      const { data: activeSession } = await admin.from("projeto_super_device_sessions").select("id")
+        .eq("device_id", deviceId).eq("owner_user_id", owner.id).eq("status", "active").limit(1);
+      if (requestedAction === "stop_session" && !activeSession?.length) {
+        return reply({ ok: false, error: "Não há sessão ativa para encerrar." }, 409);
+      }
+      if (requestedAction !== "stop_session" && activeSession?.length) {
+        return reply({ ok: false, error: "Encerre a sessão atual antes de iniciar outra." }, 409);
+      }
       const { data: existing } = await admin.from("projeto_super_control_requests").select("id")
         .eq("device_id", deviceId).eq("status", "pending").gt("expires_at", new Date().toISOString()).limit(1);
       if (existing?.length) return reply({ ok: false, error: "Já existe uma solicitação aguardando o aparelho." }, 409);
