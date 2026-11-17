@@ -82,7 +82,20 @@
     </section>
 
 
-    <section class="card" id="remoteControl">
+    <section class="card" id="adminLogin">
+      <div class="card-heading"><span class="emoji">🔑</span><div>
+        <h2>Acesso do administrador</h2>
+        <p>O laboratório continua público. Somente o painel de controle remoto exige autenticação administrativa.</p>
+      </div></div>
+      <label for="adminEmail">E-mail</label>
+      <input id="adminEmail" type="email" autocomplete="username" placeholder="E-mail do administrador">
+      <label for="adminPassword">Senha</label>
+      <input id="adminPassword" type="password" autocomplete="current-password" placeholder="Sua senha">
+      <button id="btnAdminLogin" type="button">Entrar no painel</button>
+      <p id="statusAdminLogin" class="status" aria-live="polite">Entre com a conta autorizada.</p>
+    </section>
+
+    <section class="card" id="remoteControl" hidden>
       <div class="card-heading"><span class="emoji">📡</span><div>
         <h2>Dispositivos Android vinculados</h2>
         <p>Vincule o aparelho de laboratório pelo código exibido no app. Cada pedido de câmera ou tela precisa ser aceito no próprio Android. A prévia é atualizada por quadros periódicos, não é um fluxo contínuo de vídeo.</p>
