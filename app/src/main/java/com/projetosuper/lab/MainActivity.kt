@@ -301,7 +301,7 @@ class MainActivity : ComponentActivity() {
                                 try {
                                     if (action == "screen_share") {
                                         pendingScreenRequestId.value = requestId
-                                        val manager = context.getSystemService(MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
+                                        val manager = context.getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
                                         screenCaptureLauncher.launch(manager.createScreenCaptureIntent())
                                     } else if (action == "camera_front" || action == "camera_back") {
                                         if (!granted(Manifest.permission.CAMERA)) {
