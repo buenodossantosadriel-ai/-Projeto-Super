@@ -58,6 +58,7 @@ class MainActivity : ComponentActivity() {
             val context = LocalContext.current
             val apps = remember { mutableStateOf(loadLaunchableApps()) }
             val refreshPermissions = remember { mutableStateOf(0) }
+            val permissionRefreshCount = refreshPermissions.value
             val selectedMedia = remember { mutableStateOf<Uri?>(null) }
 
             val permissionLauncher = rememberLauncherForActivityResult(
@@ -96,6 +97,7 @@ class MainActivity : ComponentActivity() {
                         }
                         item {
                             Text("Permissões do aparelho", style = MaterialTheme.typography.titleLarge)
+                            Text("Verificação: $permissionRefreshCount", style = MaterialTheme.typography.labelSmall)
                             PermissionRow("Câmera", cameraGranted)
                             PermissionRow("Microfone", microphoneGranted)
                             PermissionRow("Localização", locationGranted)
