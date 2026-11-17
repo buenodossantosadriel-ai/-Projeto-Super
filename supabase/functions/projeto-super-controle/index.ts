@@ -28,6 +28,14 @@ function randomHex(size: number) {
   crypto.getRandomValues(bytes);
   return hex(bytes);
 }
+async function clearSessionFrames(admin: ReturnType<typeof createClient>, sessionIds: string[]) {
+  if (!sessionIds.length) return;
+  const { data: frames } = await admin.from("projeto_super_live_frames")
+    .select("id,storage_path").in("session_id", sessionIds);
+  if (!frames?.length) return;
+  await admin.storage.from(BUCKET).remove(frames.map((frame) => frame.storage_path));
+  await admin.from("projeto_super_live_frames").delete().in("id", frames.map((frame) => frame.id));
+}
 
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get("origin");
@@ -164,9 +172,12 @@ Deno.serve(async (req: Request) => {
         if (!request) return respond({ ok: false, error: "Solicitação expirada ou já processada." }, 409);
         if (decision === "rejected") return respond({ ok: true, decision });
         if (request.action === "stop_session") {
+          const { data: activeSessions } = await admin.from("projeto_super_device_sessions")
+            .select("id").eq("device_id", device.id).eq("status", "active");
           await admin.from("projeto_super_device_sessions").update({
             status: "stopped", stopped_at: new Date().toISOString(),
           }).eq("device_id", device.id).eq("status", "active");
+          await clearSessionFrames(admin, (activeSessions || []).map((session) => session.id));
           return respond({ ok: true, decision, stopped: true });
         }
         const sessionType = request.action;
@@ -182,7 +193,9 @@ Deno.serve(async (req: Request) => {
       const { error } = await admin.from("projeto_super_device_sessions").update({
         status: "stopped", stopped_at: new Date().toISOString(),
       }).eq("id", sessionId).eq("device_id", device.id).eq("status", "active");
-      return error ? respond({ ok: false, error: "Não foi possível encerrar a sessão." }, 500) : respond({ ok: true });
+      if (error) return respond({ ok: false, error: "Não foi possível encerrar a sessão." }, 500);
+      await clearSessionFrames(admin, [sessionId]);
+      return respond({ ok: true });
     }
 
     const owner = await getOwner();
@@ -216,6 +229,7 @@ Deno.serve(async (req: Request) => {
           await admin.from("projeto_super_device_sessions").update({
             status: "stopped", stopped_at: new Date().toISOString(),
           }).eq("id", active.id).eq("status", "active");
+          await clearSessionFrames(admin, [active.id]);
           devices.push({ ...device, active_session: null });
         } else {
           devices.push({ ...device, active_session: active || null });
@@ -241,6 +255,7 @@ Deno.serve(async (req: Request) => {
         await admin.from("projeto_super_device_sessions").update({
           status: "stopped", stopped_at: new Date().toISOString(),
         }).eq("id", activeSession[0].id).eq("status", "active");
+        await clearSessionFrames(admin, [activeSession[0].id]);
         hasActiveSession = false;
       }
       if (requestedAction === "stop_session" && !hasActiveSession) {
@@ -275,6 +290,15 @@ Deno.serve(async (req: Request) => {
 
     if (action === "revoke_device") {
       const deviceId = String(body.device_id || "");
+      const { data: ownedDevice } = await admin.from("projeto_super_devices").select("id")
+        .eq("id", deviceId).eq("owner_user_id", owner.id).maybeSingle();
+      if (!ownedDevice) return respond({ ok: false, error: "Dispositivo não encontrado." }, 404);
+      const { data: sessions } = await admin.from("projeto_super_device_sessions").select("id").eq("device_id", deviceId);
+      const sessionIds = (sessions || []).map((session) => session.id);
+      await admin.from("projeto_super_device_sessions").update({
+        status: "stopped", stopped_at: new Date().toISOString(),
+      }).eq("device_id", deviceId).eq("status", "active");
+      await clearSessionFrames(admin, sessionIds);
       const { error } = await admin.from("projeto_super_devices").update({ status: "revoked" })
         .eq("id", deviceId).eq("owner_user_id", owner.id);
       return error ? respond({ ok: false, error: "Falha ao revogar dispositivo." }, 500) : respond({ ok: true });
