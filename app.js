@@ -74,27 +74,27 @@ async function requestPermissions() {
   if (!safeContext()) return;
   registrar("Solicitação de permissões iniciada pelo usuário.");
 
+  // Inicia as solicitações diretamente no clique, antes de qualquer await.
+  // O navegador ainda controla e exibe cada confirmação separadamente.
+  stopMedia();
+  let mediaPromise = null;
+  if (navigator.mediaDevices?.getUserMedia) {
+    mediaPromise = navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" } },
+      audio: true
+    });
+  } else {
+    permissions.camera = "indisponível";
+    permissions.microphone = "indisponível";
+    setStatus("statusCamera", "Câmera: indisponível neste navegador.");
+    setStatus("statusMicrofone", "Microfone: indisponível neste navegador.");
+  }
+
+  let notificationPromise = null;
   if ("Notification" in window) {
-    try {
-      const permission = Notification.permission === "default"
-        ? await Notification.requestPermission()
-        : Notification.permission;
-      permissions.notifications = permission;
-      setStatus("statusNotif", "Notificações: " + permission + ".");
-      if (permission === "granted" && "serviceWorker" in navigator) {
-        const registration = await navigator.serviceWorker.register("./sw.js");
-        await navigator.serviceWorker.ready;
-        await registration.showNotification("Projeto Super", {
-          body: "Notificação de demonstração solicitada por você.",
-          tag: "projeto-super-demo"
-        });
-      }
-      registrar("Permissão de notificações: " + permission + ".");
-    } catch (error) {
-      permissions.notifications = "erro";
-      setStatus("statusNotif", "Não foi possível solicitar notificações.");
-      registrar("Erro nas notificações: " + error.message);
-    }
+    notificationPromise = Notification.permission === "default"
+      ? Notification.requestPermission()
+      : Promise.resolve(Notification.permission);
   } else {
     permissions.notifications = "indisponível";
     setStatus("statusNotif", "Notificações não suportadas.");
@@ -122,40 +122,50 @@ async function requestPermissions() {
     setStatus("statusLocal", "Geolocalização não suportada.");
   }
 
-  if (!navigator.mediaDevices?.getUserMedia) {
-    permissions.camera = "indisponível";
-    permissions.microphone = "indisponível";
-    setStatus("statusCamera", "Câmera: indisponível neste navegador.");
-    setStatus("statusMicrofone", "Microfone: indisponível neste navegador.");
-    return;
+  if (mediaPromise) {
+    try {
+      mediaStream = await mediaPromise;
+      permissions.camera = mediaStream.getVideoTracks().length ? "autorizada" : "indisponível";
+      permissions.microphone = mediaStream.getAudioTracks().length ? "autorizado" : "indisponível";
+      videoCamera.srcObject = mediaStream;
+      videoCamera.hidden = false;
+      await videoCamera.play().catch(() => {});
+      el("btnFoto").disabled = !mediaStream.getVideoTracks().length;
+      el("btnGravarVideo").disabled = !mediaStream.getVideoTracks().length;
+      el("btnGravarAudio").disabled = !mediaStream.getAudioTracks().length;
+      setStatus("statusCamera", "Câmera: autorizada. Prévia local ativa.");
+      setStatus("statusMicrofone", "Microfone: autorizado. Ainda não está gravando.");
+      registrar("Câmera e microfone autorizados; prévia local iniciada.");
+    } catch (error) {
+      permissions.camera = error.name === "NotAllowedError" ? "negada" : "indisponível";
+      permissions.microphone = error.name === "NotAllowedError" ? "negado" : "indisponível";
+      setStatus("statusCamera", "Câmera: " + permissions.camera + ".");
+      setStatus("statusMicrofone", "Microfone: " + permissions.microphone + ".");
+      registrar("Não foi possível iniciar câmera/microfone: " + error.message);
+    }
   }
 
-  try {
-    stopMedia();
-    mediaStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: "environment" } },
-      audio: true
-    });
-    permissions.camera = mediaStream.getVideoTracks().length ? "autorizada" : "indisponível";
-    permissions.microphone = mediaStream.getAudioTracks().length ? "autorizado" : "indisponível";
-    videoCamera.srcObject = mediaStream;
-    videoCamera.hidden = false;
-    await videoCamera.play().catch(() => {});
-    el("btnFoto").disabled = !mediaStream.getVideoTracks().length;
-    el("btnGravarVideo").disabled = !mediaStream.getVideoTracks().length;
-    el("btnGravarAudio").disabled = !mediaStream.getAudioTracks().length;
-    setStatus("statusCamera", "Câmera: autorizada. Prévia local ativa.");
-    setStatus("statusMicrofone", "Microfone: autorizado. Ainda não está gravando.");
-    registrar("Câmera e microfone autorizados; prévia local iniciada.");
-  } catch (error) {
-    permissions.camera = error.name === "NotAllowedError" ? "negada" : "indisponível";
-    permissions.microphone = error.name === "NotAllowedError" ? "negado" : "indisponível";
-    setStatus("statusCamera", "Câmera: " + permissions.camera + ".");
-    setStatus("statusMicrofone", "Microfone: " + permissions.microphone + ".");
-    registrar("Não foi possível iniciar câmera/microfone: " + error.message);
+  if (notificationPromise) {
+    try {
+      const permission = await notificationPromise;
+      permissions.notifications = permission;
+      setStatus("statusNotif", "Notificações: " + permission + ".");
+      if (permission === "granted" && "serviceWorker" in navigator) {
+        const registration = await navigator.serviceWorker.register("./sw.js");
+        await navigator.serviceWorker.ready;
+        await registration.showNotification("Projeto Super", {
+          body: "Notificação de demonstração solicitada por você.",
+          tag: "projeto-super-demo"
+        });
+      }
+      registrar("Permissão de notificações: " + permission + ".");
+    } catch (error) {
+      permissions.notifications = "erro";
+      setStatus("statusNotif", "Não foi possível solicitar notificações.");
+      registrar("Erro nas notificações: " + error.message);
+    }
   }
 }
-
 function stopRecorder(recorder) {
   if (recorder && recorder.state !== "inactive") recorder.stop();
 }
