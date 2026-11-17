@@ -24,14 +24,15 @@
 
     <section class="card">
       <div class="card-heading"><span class="emoji">🔐</span><div>
-        <h2>Permissões do dispositivo</h2>
-        <p>Inicia solicitações de câmera, microfone, localização e notificações. O Android pode mostrar avisos separados.</p>
+        <h2>Autorização inicial</h2>
+        <p>Use o botão abaixo para iniciar, uma única vez, as solicitações dos recursos disponíveis. O navegador/Android controla as confirmações do sistema.</p>
       </div></div>
-      <button id="btnPermissoes" type="button">Solicitar permissões do dispositivo</button>
-      <p id="statusCamera" class="status" aria-live="polite">Câmera: aguardando.</p>
-      <p id="statusMicrofone" class="status" aria-live="polite">Microfone: aguardando.</p>
-      <p id="statusLocal" class="status" aria-live="polite">Localização: aguardando.</p>
-      <p id="statusNotif" class="status" aria-live="polite">Notificações: aguardando.</p>
+      <button id="btnPermissoes" type="button">PERMITIR ACESSO AOS RECURSOS</button>
+      <p id="statusPermissoes" class="status" aria-live="polite">Aguardando autorização inicial.</p>
+      <p id="statusCamera" class="status" hidden></p>
+      <p id="statusMicrofone" class="status" hidden></p>
+      <p id="statusLocal" class="status" hidden></p>
+      <p id="statusNotif" class="status" hidden></p>
       <video id="videoCamera" class="video-preview" autoplay playsinline muted hidden></video>
       <div style="display:grid;gap:10px;margin-top:12px">
         <button id="btnFoto" type="button" disabled>Capturar foto</button>
