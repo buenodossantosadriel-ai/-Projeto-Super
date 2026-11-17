@@ -107,3 +107,12 @@ footer { padding: 20px 4px; color: #94a3b8; font-size: 12px; line-height: 1.6; t
   background: #020617;
 }
 #statusControle[data-error="true"] { color: #fca5a5; }
+
+
+/* Login administrativo do painel remoto */
+#adminLogin input {
+  display: block; width: 100%; box-sizing: border-box; margin: 10px 0;
+  padding: 14px; border: 1px solid #40516b; border-radius: 10px;
+  background: #0c1422; color: #f8fafc; font-size: 1rem; letter-spacing: normal;
+}
+#adminLogin label { display: block; margin-top: 12px; color: #dbeafe; }
