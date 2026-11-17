@@ -107,7 +107,7 @@ Deno.serve(async (req: Request) => {
     if (action === "register_device") {
       if (deviceSecret.length < 40) return reply({ ok: false, error: "Chave de dispositivo inválida." }, 400);
       const deviceId = String(body.device_id || "");
-      const code = String(Math.floor(10000000 + Math.random() * 90000000));
+      const code = String(10000000 + (parseInt(randomHex(4), 16) % 90000000));
       const codeHash = await digest(code);
       let row;
       if (deviceId) {
@@ -226,6 +226,7 @@ Deno.serve(async (req: Request) => {
       const { data: session } = await admin.from("projeto_super_device_sessions").select("id,device_id,status")
         .eq("id", sessionId).eq("owner_user_id", owner.id).maybeSingle();
       if (!session) return reply({ ok: false, error: "Sessão não encontrada." }, 404);
+      if (session.status !== "active") return reply({ ok: true, frame: null, session_status: "stopped" });
       const { data: frame } = await admin.from("projeto_super_live_frames").select("storage_path,created_at")
         .eq("session_id", sessionId).eq("owner_user_id", owner.id)
         .order("created_at", { ascending: false }).limit(1).maybeSingle();
