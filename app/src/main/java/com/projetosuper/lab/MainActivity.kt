@@ -317,11 +317,19 @@ class MainActivity : ComponentActivity() {
                             scope.launch {
                                 try {
                                     if (action == "screen_share") {
-                                        pendingScreenRequestId.value = requestId
-                                        val manager = context.getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
+                                        if (!notificationsGranted) {
+                                            ControlApi.decide(context, requestId, false)
+                                            deviceError.value = "Ative as notificações nas configurações para manter o indicador da sessão visível."
+                                        } else {
+                                            pendingScreenRequestId.value = requestId
+                                            val manager = context.getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
                                         screenCaptureLauncher.launch(manager.createScreenCaptureIntent())
+                                        }
                                     } else if (action == "camera_front" || action == "camera_back") {
-                                        if (!granted(Manifest.permission.CAMERA)) {
+                                        if (!notificationsGranted) {
+                                            ControlApi.decide(context, requestId, false)
+                                            deviceError.value = "Ative as notificações para manter o indicador da sessão visível."
+                                        } else if (!granted(Manifest.permission.CAMERA)) {
                                             ControlApi.decide(context, requestId, false)
                                             deviceError.value = "Permissão da câmera não concedida nas configurações do Android."
                                         } else {
