@@ -224,6 +224,17 @@ class MainActivity : ComponentActivity() {
                             if (devicePaired.value) {
                                 Text("Este aparelho está vinculado à conta do painel.")
                             }
+                            Button(
+                                onClick = {
+                                    context.startService(
+                                        Intent(context, CameraCaptureService::class.java).setAction(CameraCaptureService.ACTION_STOP)
+                                    )
+                                    context.startService(
+                                        Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP)
+                                    )
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Encerrar qualquer sessão neste aparelho") }
                             deviceError.value?.let { Text("Aviso: $it", color = MaterialTheme.colorScheme.error) }
                         }
                         item {
