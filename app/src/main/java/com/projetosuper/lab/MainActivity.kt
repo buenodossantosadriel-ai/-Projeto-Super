@@ -89,7 +89,7 @@ class MainActivity : ComponentActivity() {
                 if (requestId != null) {
                     scope.launch {
                         try {
-                            if (result.resultCode == RESULT_OK && result.data != null) {
+                            if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
                                 val response = ControlApi.decide(context, requestId, true)
                                 val start = Intent(context, ScreenCaptureService::class.java)
                                     .setAction(ScreenCaptureService.ACTION_START)
