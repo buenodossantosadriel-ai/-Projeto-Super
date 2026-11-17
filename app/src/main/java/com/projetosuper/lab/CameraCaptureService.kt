@@ -29,6 +29,8 @@ import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 class CameraCaptureService : LifecycleService() {
     companion object {
@@ -78,6 +80,7 @@ class CameraCaptureService : LifecycleService() {
         val type = if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA else 0
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type)
         startCamera(lens)
+        startStopCommandWatcher()
         return START_NOT_STICKY
     }
 
@@ -162,9 +165,31 @@ class CameraCaptureService : LifecycleService() {
         return if (yuv.compressToJpeg(Rect(0, 0, width, height), 65, out)) out.toByteArray() else null
     }
 
-    private fun stopCapture() {
+    private fun startStopCommandWatcher() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                try {
+                    val response = ControlApi.poll(this@CameraCaptureService)
+                    val requests = response.optJSONArray("requests")
+                    if (requests != null) {
+                        for (i in 0 until requests.length()) {
+                            val request = requests.getJSONObject(i)
+                            if (request.optString("action") == "stop_session") {
+                                ControlApi.decide(this@CameraCaptureService, request.optString("id"), true)
+                                stopCapture(remoteAlreadyStopped = true)
+                                return@launch
+                            }
+                        }
+                    }
+                } catch (_: Exception) { }
+                delay(3000)
+            }
+        }
+    }
+
+    private fun stopCapture(remoteAlreadyStopped: Boolean = false) {
         cameraProvider?.unbindAll()
-        if (sessionId.isNotBlank()) {
+        if (!remoteAlreadyStopped && sessionId.isNotBlank()) {
             lifecycleScope.launch(Dispatchers.IO) {
                 try { ControlApi.stopSession(this@CameraCaptureService, sessionId) } catch (_: Exception) {}
             }
