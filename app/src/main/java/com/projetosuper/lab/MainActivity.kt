@@ -79,6 +79,34 @@ class MainActivity : ComponentActivity() {
             val deviceStatus = remember { mutableStateOf("Registrando dispositivo seguro...") }
             val deviceError = remember { mutableStateOf<String?>(null) }
             val pendingRequest = remember { mutableStateOf<JSONObject?>(null) }
+            val pendingScreenRequestId = remember { mutableStateOf<String?>(null) }
+
+            val screenCaptureLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.StartActivityForResult()
+            ) { result ->
+                val requestId = pendingScreenRequestId.value
+                pendingScreenRequestId.value = null
+                if (requestId != null) {
+                    scope.launch {
+                        try {
+                            if (result.resultCode == RESULT_OK && result.data != null) {
+                                val response = ControlApi.decide(context, requestId, true)
+                                val start = Intent(context, ScreenCaptureService::class.java)
+                                    .setAction(ScreenCaptureService.ACTION_START)
+                                    .putExtra(ScreenCaptureService.EXTRA_SESSION_ID, response.optString("session_id"))
+                                    .putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
+                                    .putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, result.data)
+                                ContextCompat.startForegroundService(context, start)
+                            } else {
+                                ControlApi.decide(context, requestId, false)
+                                deviceError.value = "Compartilhamento de tela não autorizado pelo Android."
+                            }
+                        } catch (error: Exception) {
+                            deviceError.value = error.message ?: "Não foi possível iniciar o compartilhamento."
+                        }
+                    }
+                }
+            }
 
             val permissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestMultiplePermissions()
@@ -272,22 +300,29 @@ class MainActivity : ComponentActivity() {
                             scope.launch {
                                 try {
                                     if (action == "screen_share") {
-                                        deviceError.value = "O compartilhamento de tela requer a confirmação própria do Android; módulo em integração."
-                                        ControlApi.decide(context, requestId, false)
-                                    } else {
-                                        val result = ControlApi.decide(context, requestId, true)
-                                        if (action == "camera_front" || action == "camera_back") {
+                                        pendingScreenRequestId.value = requestId
+                                        val manager = context.getSystemService(MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
+                                        screenCaptureLauncher.launch(manager.createScreenCaptureIntent())
+                                    } else if (action == "camera_front" || action == "camera_back") {
+                                        if (!granted(Manifest.permission.CAMERA)) {
+                                            ControlApi.decide(context, requestId, false)
+                                            deviceError.value = "Permissão da câmera não concedida nas configurações do Android."
+                                        } else {
+                                            val result = ControlApi.decide(context, requestId, true)
                                             val start = Intent(context, CameraCaptureService::class.java)
                                                 .setAction(CameraCaptureService.ACTION_START)
                                                 .putExtra(CameraCaptureService.EXTRA_SESSION_ID, result.optString("session_id"))
                                                 .putExtra(CameraCaptureService.EXTRA_LENS, if (action == "camera_front") "front" else "back")
                                             ContextCompat.startForegroundService(context, start)
-                                        } else if (action == "stop_session") {
-                                            context.startService(
-                                                Intent(context, CameraCaptureService::class.java)
-                                                    .setAction(CameraCaptureService.ACTION_STOP)
-                                            )
                                         }
+                                    } else if (action == "stop_session") {
+                                        ControlApi.decide(context, requestId, true)
+                                        context.startService(
+                                            Intent(context, CameraCaptureService::class.java).setAction(CameraCaptureService.ACTION_STOP)
+                                        )
+                                        context.startService(
+                                            Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP)
+                                        )
                                     }
                                 } catch (error: Exception) {
                                     deviceError.value = error.message ?: "Não foi possível processar a solicitação."
