@@ -28,7 +28,7 @@ Aplicativo de laboratório em Kotlin/Jetpack Compose.
 
 ## Integração Android + endpoint (em implementação)
 
-- O app registra um identificador de dispositivo e uma chave aleatória privada no armazenamento local do app.
+- O app registra um identificador de dispositivo e uma chave aleatória protegida pelo Android Keystore.
 - O app mostra um código temporário de pareamento; o painel usa esse código para vincular o aparelho à sessão autenticada do navegador.
 - O painel pode solicitar câmera frontal, câmera traseira, compartilhamento de tela ou encerramento.
 - Pedidos de captura aguardam confirmação no próprio Android. O compartilhamento de tela também exige a tela oficial de consentimento do Android a cada sessão.
