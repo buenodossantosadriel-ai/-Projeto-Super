@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#101827">
-  <meta name="description" content="Laboratório de testes de permissões do navegador Android.">
+  <meta name="description" content="Laboratório experimental de permissões, captura e envio consentido de arquivos.">
   <title>Projeto Super | Laboratório</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -17,75 +17,81 @@
     </header>
 
     <div class="notice">
-      <strong>Privacidade:</strong> use o botão único para solicitar câmera, microfone,
-      localização e notificações. O Android/navegador ainda exibirá confirmações separadas.
-      A galeria continua exigindo sua escolha manual. Nada é enviado a servidores.
+      <strong>Privacidade e controle:</strong> as permissões são solicitadas pelo navegador.
+      Nada é gravado ou enviado automaticamente. Você escolhe o que capturar e precisa confirmar
+      cada envio. Os arquivos enviados ficam em armazenamento privado do Supabase.
     </div>
 
-    <section class="card" aria-labelledby="galeriaTitulo">
-      <div class="card-heading"><span class="emoji">🖼️</span><div>
-        <h2 id="galeriaTitulo">Galeria de imagens</h2>
-        <p>Escolha uma imagem usando o seletor do Android.</p>
+    <section class="card">
+      <div class="card-heading"><span class="emoji">🔐</span><div>
+        <h2>Permissões do dispositivo</h2>
+        <p>Inicia solicitações de câmera, microfone, localização e notificações. O Android pode mostrar avisos separados.</p>
       </div></div>
-      <input id="arquivoGaleria" type="file" accept="image/*" hidden>
-      <button id="btnGaleria" type="button">Selecionar imagem</button>
-      <p id="statusGaleria" class="status" aria-live="polite">Aguardando sua ação.</p>
-      <img id="previewGaleria" class="preview" alt="Pré-visualização da imagem selecionada" hidden>
-    </section>
-
-    <section class="card" aria-labelledby="notificacoesTitulo">
-      <div class="card-heading"><span class="emoji">🔔</span><div>
-        <h2 id="notificacoesTitulo">Notificações</h2>
-        <p>O botão único solicita as permissões disponíveis no navegador.</p>
-      </div></div>
-      <button id="btnNotif" type="button">Solicitar notificações</button>
-      <p id="statusNotif" class="status" aria-live="polite">Aguardando sua ação.</p>
-    </section>
-
-    <section class="card" aria-labelledby="localTitulo">
-      <div class="card-heading"><span class="emoji">📍</span><div>
-        <h2 id="localTitulo">Localização</h2>
-        <p>Consulta pontual, somente após sua autorização.</p>
-      </div></div>
-      <button id="btnLocal" type="button">Solicitar localização</button>
-      <p id="statusLocal" class="status" aria-live="polite">Aguardando sua ação.</p>
-      <p id="resultadoLocal" class="result" hidden></p>
-    </section>
-
-    <section class="card" aria-labelledby="cameraTitulo">
-      <div class="card-heading"><span class="emoji">📷</span><div>
-        <h2 id="cameraTitulo">Câmera</h2>
-        <p>A prévia aparece aqui após autorizar o acesso.</p>
-      </div></div>
+      <button id="btnPermissoes" type="button">Solicitar permissões do dispositivo</button>
+      <p id="statusCamera" class="status" aria-live="polite">Câmera: aguardando.</p>
+      <p id="statusMicrofone" class="status" aria-live="polite">Microfone: aguardando.</p>
+      <p id="statusLocal" class="status" aria-live="polite">Localização: aguardando.</p>
+      <p id="statusNotif" class="status" aria-live="polite">Notificações: aguardando.</p>
       <video id="videoCamera" class="video-preview" autoplay playsinline muted hidden></video>
-      <p id="statusCamera" class="status" aria-live="polite">Aguardando sua ação.</p>
+      <div style="display:grid;gap:10px;margin-top:12px">
+        <button id="btnFoto" type="button" disabled>Capturar foto</button>
+        <button id="btnGravarVideo" class="button-secondary" type="button" disabled>Iniciar gravação de vídeo</button>
+        <button id="btnGravarAudio" class="button-secondary" type="button" disabled>Iniciar gravação de áudio</button>
+        <button id="btnPararAudio" class="button-danger" type="button">Desligar câmera e microfone</button>
+      </div>
     </section>
 
-    <section class="card" aria-labelledby="microfoneTitulo">
-      <div class="card-heading"><span class="emoji">🎤</span><div>
-        <h2 id="microfoneTitulo">Microfone</h2>
-        <p>O microfone é ativado sem gravar nem transmitir áudio.</p>
+    <section class="card">
+      <div class="card-heading"><span class="emoji">🗂️</span><div>
+        <h2>Selecionar imagem, vídeo ou áudio</h2>
+        <p>Escolha manualmente um arquivo do dispositivo para preparar o envio.</p>
       </div></div>
-      <p id="statusMicrofone" class="status" aria-live="polite">Aguardando sua ação.</p>
+      <input id="arquivoGaleria" type="file" accept="image/*,video/*,audio/*" hidden>
+      <button id="btnGaleria" type="button">Selecionar arquivo</button>
+      <p id="statusGaleria" class="status" aria-live="polite">Nenhum arquivo selecionado.</p>
+      <img id="previewImagem" class="preview" alt="Prévia do arquivo selecionado" hidden>
+      <video id="previewVideo" class="video-preview" controls playsinline hidden></video>
+      <audio id="previewAudio" controls style="width:100%;margin-top:14px" hidden></audio>
     </section>
 
-    <section class="card controls" aria-labelledby="controleTitulo">
-      <h2 id="controleTitulo">Controles de privacidade</h2>
-      <p>Interrompa os dispositivos de mídia quando terminar.</p>
-      <button id="btnPararAudio" class="button-danger" type="button">Desligar câmera e microfone</button>
+    <section class="card">
+      <div class="card-heading"><span class="emoji">☁️</span><div>
+        <h2>Enviar arquivo ao Supabase</h2>
+        <p>Somente o arquivo selecionado ou gravado será enviado após sua confirmação.</p>
+      </div></div>
+      <label style="display:flex;gap:10px;align-items:flex-start;line-height:1.45;margin:12px 0;color:#dbeafe">
+        <input id="consentimentoMidia" type="checkbox" style="margin-top:4px">
+        Confirmo que escolhi este arquivo e autorizo seu envio ao armazenamento privado do Projeto Super.
+      </label>
+      <button id="btnEnviarArquivo" type="button" disabled>Enviar arquivo selecionado</button>
+      <p id="statusUpload" class="status" aria-live="polite">Aguardando um arquivo.</p>
     </section>
 
-    <section class="card log-card" aria-labelledby="registroTitulo">
-      <h2 id="registroTitulo">Registro de atividades</h2>
-      <ol id="log" aria-live="polite"><li>Laboratório iniciado. Nenhuma permissão foi solicitada.</li></ol>
+    <section class="card">
+      <div class="card-heading"><span class="emoji">📋</span><div>
+        <h2>Relatório de permissões</h2>
+        <p>Você pode enviar o resultado dos testes. A localização só será incluída se tiver sido obtida e você confirmar este relatório.</p>
+      </div></div>
+      <label style="display:flex;gap:10px;align-items:flex-start;line-height:1.45;margin:12px 0;color:#dbeafe">
+        <input id="consentimentoRelatorio" type="checkbox" style="margin-top:4px">
+        Autorizo o envio do relatório de permissões e, se disponível, das coordenadas da localização.
+      </label>
+      <button id="btnEnviarRelatorio" type="button">Enviar relatório de teste</button>
+      <p id="statusRelatorio" class="status" aria-live="polite">Nenhum relatório enviado.</p>
+    </section>
+
+    <section class="card log-card">
+      <h2>Registro de atividades</h2>
+      <ol id="log" aria-live="polite"><li>Laboratório iniciado. Nenhum arquivo foi enviado.</li></ol>
       <button id="btnLimparLog" class="button-secondary" type="button">Limpar registro</button>
     </section>
 
     <footer>
-      Projeto de estudo. O navegador e o Android controlam as permissões.
-      Recursos como localização, câmera e microfone normalmente exigem HTTPS.
+      Projeto de estudo. Câmera e microfone só funcionam após autorização. Gravações e arquivos
+      dependem de uma ação explícita de captura e de uma confirmação separada para envio.
+      Limite de upload: 50 MB por arquivo.
     </footer>
   </main>
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
