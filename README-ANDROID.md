@@ -1,27 +1,25 @@
 # Projeto Super — Android nativo
 
-Primeira etapa do aplicativo Android em Kotlin.
+Aplicativo de laboratório em Kotlin/Jetpack Compose.
 
-## O que esta etapa faz
-- Lista aplicativos que possuem uma atividade de inicialização visível ao Android.
-- Mostra nome e identificador de pacote.
-- Abre um aplicativo somente após toque explícito em **Abrir**.
-- Não monitora uso, não lê dados privados de outros apps e não bloqueia aplicativos.
-
-## Abrir no Android Studio
-1. Abra o Android Studio e escolha **Open**.
-2. Selecione a pasta do repositório.
-3. Aguarde a sincronização do Gradle.
-4. Conecte o aparelho de laboratório com depuração USB habilitada ou use um emulador.
-5. Execute a configuração **app**.
+## Recursos implementados
+- Lista apps com atividade de inicialização visível ao Android.
+- Mostra nome e identificador de pacote; abre somente após toque explícito.
+- Painel de status para câmera, microfone, localização e notificações.
+- Solicita permissões em resposta ao botão do usuário, sem pedir tudo ao iniciar.
+- Usa o Photo Picker oficial para o usuário selecionar uma foto ou vídeo.
+- Não inicia gravação, captura de tela ou envio de arquivos automaticamente.
+- Não monitora nem bloqueia outros aplicativos.
 
 ## Próximas etapas
-- Testar a listagem no aparelho físico.
-- Definir autenticação do dispositivo com Supabase.
-- Adicionar comandos remotos autenticados, com expiração, registro e confirmação visível.
-- Avaliar recursos oficiais de supervisão/bloqueio do Android com consentimento explícito.
+- Implementar prévia de câmera e áudio em sessão visível, iniciada localmente.
+- Implementar localização sob demanda com indicador e finalidade informada.
+- Integrar autenticação do dispositivo e endpoint Supabase com tokens de curta duração.
+- Implementar envio de mídia somente após seleção/ação explícita e confirmação.
+- Adicionar histórico local de operações e estado de conexão.
+- Avaliar controles de uso do Android apenas por APIs oficiais e autorização especial.
 
 ## Requisitos
-- Android Studio compatível com Android Gradle Plugin 8.7.3.
+- Android Gradle Plugin 8.7.3.
 - JDK 17.
 - Android SDK 35.
