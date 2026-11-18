@@ -24,6 +24,7 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+        <service android:name=".WebRtcCaptureService" android:exported="false" android:foregroundServiceType="camera|mediaProjection" />
         <service android:name=".ScreenCaptureService" android:exported="false" android:foregroundServiceType="mediaProjection" />
         <service android:name=".AudioCaptureService" android:exported="false" android:foregroundServiceType="microphone" />
         <service android:name=".CameraCaptureService" android:exported="false" android:foregroundServiceType="camera" />
