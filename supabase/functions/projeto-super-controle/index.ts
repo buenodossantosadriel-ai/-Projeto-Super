@@ -242,6 +242,13 @@ Deno.serve(async (req: Request) => {
           await clearAudioChunks(admin, stoppedIds, "live");
           return respond({ ok: true, decision, stopped: true });
         }
+        if (request.action.startsWith("open_app:")) {
+          const packageName = request.action.slice("open_app:".length);
+          if (!/^[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)+$/.test(packageName) || packageName.length > 180) {
+            return respond({ ok: false, error: "Pacote de aplicativo inválido." }, 400);
+          }
+          return respond({ ok: true, decision, opened_app_package: packageName });
+        }
         const sessionType = request.action;
         if (!["camera_front", "camera_back", "screen_share", "microphone_live", "microphone_record"].includes(sessionType)) return respond({ ok: false, error: "Ação não suportada." }, 400);
         const { data: session, error } = await admin.from("projeto_super_device_sessions").insert({
@@ -314,8 +321,12 @@ Deno.serve(async (req: Request) => {
     if (action === "request_control") {
       const deviceId = String(body.device_id || "");
       const requestedAction = String(body.control || "");
-      if (!["camera_front", "camera_back", "screen_share", "microphone_live", "microphone_record", "stop_session"].includes(requestedAction)) {
-        return respond({ ok: false, error: "Controle inválido." }, 400);
+      const isOpenApp = requestedAction.startsWith("open_app:");
+      const appPackage = isOpenApp ? requestedAction.slice("open_app:".length) : "";
+      const validPackage = /^[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)+$/.test(appPackage) && appPackage.length <= 180;
+      if (!["camera_front", "camera_back", "screen_share", "microphone_live", "microphone_record", "stop_session"].includes(requestedAction) &&
+          !(isOpenApp && validPackage)) {
+        return respond({ ok: false, error: "Controle inválido ou pacote de aplicativo inválido." }, 400);
       }
       const { data: device } = await admin.from("projeto_super_devices").select("id")
         .eq("id", deviceId).eq("owner_user_id", owner.id).eq("status", "paired").maybeSingle();
