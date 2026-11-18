@@ -129,26 +129,23 @@ Deno.serve(async (req: Request) => {
     if (action === "register_device") {
       if (deviceSecret.length < 40) return respond({ ok: false, error: "Chave de dispositivo inválida." }, 400);
       const deviceId = String(body.device_id || "");
-      const code = String(10000000 + (parseInt(randomHex(4), 16) % 90000000));
-      const codeHash = await digest(code);
       let row;
       if (deviceId) {
         const { data, error } = await admin.from("projeto_super_devices").update({
-          pairing_code_hash: codeHash, pairing_expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
-          device_name: String(body.device_name || "Dispositivo de laboratório").slice(0, 80),
-        }).eq("id", deviceId).eq("device_secret_hash", deviceHash).eq("status", "unpaired").select("id").maybeSingle();
-        if (error || !data) return respond({ ok: false, error: "Não foi possível renovar o código deste dispositivo." }, 401);
+          device_name: String(body.device_name || "Dispositivo Android").slice(0, 80),
+        }).eq("id", deviceId).eq("device_secret_hash", deviceHash).eq("status", "unpaired").is("owner_user_id", null).select("id").maybeSingle();
+        if (error || !data) return respond({ ok: false, error: "Não foi possível atualizar o cadastro deste dispositivo." }, 401);
         row = data;
       } else {
         const { data, error } = await admin.from("projeto_super_devices").insert({
-          device_secret_hash: deviceHash, pairing_code_hash: codeHash,
-          pairing_expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
-          device_name: String(body.device_name || "Dispositivo de laboratório").slice(0, 80),
+          device_secret_hash: deviceHash,
+          device_name: String(body.device_name || "Dispositivo Android").slice(0, 80),
+          status: "unpaired",
         }).select("id").single();
         if (error || !data) return respond({ ok: false, error: "Não foi possível registrar o dispositivo." }, 500);
         row = data;
       }
-      return respond({ ok: true, device_id: row.id, pairing_code: code, expires_in_seconds: 600 }, 201);
+      return respond({ ok: true, device_id: row.id, status: "awaiting_admin_approval" }, 201);
     }
 
     if (action === "device_poll" || action === "device_decide" || action === "start_session" || action === "stop_session") {
@@ -200,18 +197,27 @@ Deno.serve(async (req: Request) => {
 
     const owner = await getOwner();
     if (!owner) return respond({ ok: false, error: "Sessão do painel inválida. Entre novamente." }, 401);
+    if ((owner.email || "").toLowerCase() !== "elisareisrodrigues05@gmail.com") {
+      return respond({ ok: false, error: "Conta sem autorização administrativa." }, 403);
+    }
 
-    if (action === "pair_device") {
-      const code = String(body.pairing_code || "").replace(/\D/g, "");
-      if (code.length !== 8) return respond({ ok: false, error: "Informe o código de 8 dígitos." }, 400);
-      const { data: device } = await admin.from("projeto_super_devices").select("id")
-        .eq("pairing_code_hash", await digest(code)).gt("pairing_expires_at", new Date().toISOString())
-        .eq("status", "unpaired").maybeSingle();
-      if (!device) return respond({ ok: false, error: "Código inválido ou expirado." }, 404);
-      const { error } = await admin.from("projeto_super_devices").update({
+    if (action === "list_pending_devices") {
+      const { data, error } = await admin.from("projeto_super_devices")
+        .select("id,device_name,status,last_seen_at,created_at")
+        .is("owner_user_id", null).eq("status", "unpaired")
+        .order("created_at", { ascending: false });
+      if (error) return respond({ ok: false, error: "Falha ao listar novos dispositivos." }, 500);
+      return respond({ ok: true, devices: data || [] });
+    }
+
+    if (action === "approve_device") {
+      const deviceId = String(body.device_id || "");
+      const { data, error } = await admin.from("projeto_super_devices").update({
         owner_user_id: owner.id, status: "paired", pairing_code_hash: null, pairing_expires_at: null,
-      }).eq("id", device.id).eq("status", "unpaired");
-      return error ? respond({ ok: false, error: "Falha ao parear dispositivo." }, 500) : respond({ ok: true, device_id: device.id });
+      }).eq("id", deviceId).is("owner_user_id", null).eq("status", "unpaired")
+        .select("id").maybeSingle();
+      if (error || !data) return respond({ ok: false, error: "Dispositivo não encontrado ou já aprovado." }, 409);
+      return respond({ ok: true, device_id: data.id, status: "paired" });
     }
 
     if (action === "list_devices") {
