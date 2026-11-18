@@ -213,7 +213,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Sinalização WebRTC: Supabase transporta apenas SDP/ICE; mídia não passa pelo servidor.
-    if (action === "webrtc_send" || action === "webrtc_poll") {
+    if (action === "webrtc_send" || action === "webrtc_poll" || action === "webrtc_ice_config") {
       const sessionId = String(body.session_id || "");
       const signalType = String(body.signal_type || "");
       const allowedTypes = ["offer", "answer", "candidate", "renegotiate", "hangup"];
@@ -247,6 +247,24 @@ Deno.serve(async (req: Request) => {
           !["camera_front", "camera_back", "screen_share"].includes(liveSession.session_type) ||
           (sender === "device" && liveSession.device_id !== deviceId)) {
         return respond({ ok: false, error: "Sessão de mídia não está ativa ou não pertence a este usuário." }, 409);
+      }
+      if (action === "webrtc_ice_config") {
+        const username = Deno.env.get("METERED_TURN_USERNAME") || "";
+        const credential = Deno.env.get("METERED_TURN_CREDENTIAL") || "";
+        if (!username || !credential) {
+          return respond({ ok: false, error: "Credenciais TURN não configuradas no servidor Supabase." }, 503);
+        }
+        const urls = [
+          "stun:stun.relay.metered.ca:80",
+          "turn:standard.relay.metered.ca:80",
+          "turn:standard.relay.metered.ca:80?transport=tcp",
+          "turn:standard.relay.metered.ca:443",
+          "turns:standard.relay.metered.ca:443?transport=tcp",
+        ];
+        const iceServers = urls.map((url) => url.startsWith("stun:")
+          ? { urls: url }
+          : { urls: url, username, credential });
+        return respond({ ok: true, iceServers, provider: "Metered", relay: "standard.relay.metered.ca" });
       }
       if (action === "webrtc_send") {
         if (!allowedTypes.includes(signalType)) return respond({ ok: false, error: "Tipo de sinal inválido." }, 400);
