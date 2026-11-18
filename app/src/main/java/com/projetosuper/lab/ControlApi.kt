@@ -154,21 +154,21 @@ object ControlApi {
         try {
             connection.outputStream.use { out ->
                 fun field(name: String, value: String) {
-                    out.write("--$boundary\\r\\n".toByteArray())
-                    out.write("Content-Disposition: form-data; name=\\"$name\\"\\r\\n\\r\\n".toByteArray())
+                    out.write("--$boundary\r\n".toByteArray())
+                    out.write("Content-Disposition: form-data; name=\"$name\"\r\n\r\n".toByteArray())
                     out.write(value.toByteArray())
-                    out.write("\\r\\n".toByteArray())
+                    out.write("\r\n".toByteArray())
                 }
                 field("device_id", id)
                 field("session_id", sessionId)
                 field("mode", mode)
                 field("chunk_index", chunkIndex.toString())
                 field("duration_ms", durationMs.toString())
-                out.write("--$boundary\\r\\n".toByteArray())
-                out.write("Content-Disposition: form-data; name=\\"audio_chunk\\"; filename=\\"audio.wav\\"\\r\\n".toByteArray())
-                out.write("Content-Type: audio/wav\\r\\n\\r\\n".toByteArray())
+                out.write("--$boundary\r\n".toByteArray())
+                out.write("Content-Disposition: form-data; name=\"audio_chunk\"; filename=\"audio.wav\"\r\n".toByteArray())
+                out.write("Content-Type: audio/wav\r\n\r\n".toByteArray())
                 out.write(wav)
-                out.write("\\r\\n--$boundary--\\r\\n".toByteArray())
+                out.write("\r\n--$boundary--\r\n".toByteArray())
             }
             val stream = if (connection.responseCode in 200..299) connection.inputStream else connection.errorStream
             val result = JSONObject(stream?.bufferedReader()?.use { it.readText() } ?: "{}")
