@@ -91,6 +91,11 @@ object ControlApi {
         val oldId = prefs.getString("device_id", null)
         val oldSecret = loadSecret(prefs)
         if (!oldId.isNullOrBlank() && !oldSecret.isNullOrBlank()) {
+            val payload = JSONObject()
+                .put("action", "register_device")
+                .put("device_id", oldId)
+                .put("device_name", android.os.Build.MODEL ?: "Android de laboratório")
+            request(payload, oldSecret)
             return@withContext Credentials(oldId, oldSecret)
         }
         val secret = UUID.randomUUID().toString() + UUID.randomUUID().toString()
