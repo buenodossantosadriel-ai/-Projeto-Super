@@ -6,6 +6,7 @@ on:
     branches:
       - android-native
       - feature/fcm-permission-prompts
+      - feature/webrtc-adaptive-streaming
 
 permissions:
   contents: read
