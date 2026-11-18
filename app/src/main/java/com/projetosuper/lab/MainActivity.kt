@@ -224,6 +224,9 @@ class MainActivity : ComponentActivity() {
                                     context.startService(
                                         Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP)
                                     )
+                                    context.startService(
+                                        Intent(context, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP)
+                                    )
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Encerrar qualquer sessão neste aparelho") }
@@ -297,6 +300,8 @@ class MainActivity : ComponentActivity() {
                     "camera_front" -> "O endpoint está solicitando uma sessão com a câmera frontal."
                     "camera_back" -> "O endpoint está solicitando uma sessão com a câmera traseira."
                     "screen_share" -> "O endpoint está solicitando compartilhamento da tela."
+                    "microphone_live" -> "O endpoint está solicitando acesso ao microfone para ouvir áudio ao vivo."
+                    "microphone_record" -> "O endpoint está solicitando iniciar uma gravação de áudio."
                     "stop_session" -> "O endpoint está solicitando o encerramento da sessão ativa."
                     else -> "O endpoint enviou uma solicitação."
                 }
@@ -332,6 +337,21 @@ class MainActivity : ComponentActivity() {
                                                 .putExtra(CameraCaptureService.EXTRA_LENS, if (action == "camera_front") "front" else "back")
                                             ContextCompat.startForegroundService(context, start)
                                         }
+                                    } else if (action == "microphone_live" || action == "microphone_record") {
+                                        if (!notificationsGranted) {
+                                            ControlApi.decide(context, requestId, false)
+                                            deviceError.value = "Ative as notificações para manter o indicador do microfone visível."
+                                        } else if (!granted(Manifest.permission.RECORD_AUDIO)) {
+                                            ControlApi.decide(context, requestId, false)
+                                            deviceError.value = "Permissão do microfone não concedida nas configurações do Android."
+                                        } else {
+                                            val result = ControlApi.decide(context, requestId, true)
+                                            val start = Intent(context, AudioCaptureService::class.java)
+                                                .setAction(AudioCaptureService.ACTION_START)
+                                                .putExtra(AudioCaptureService.EXTRA_SESSION_ID, result.optString("session_id"))
+                                                .putExtra(AudioCaptureService.EXTRA_MODE, if (action == "microphone_live") "live" else "recording")
+                                            ContextCompat.startForegroundService(context, start)
+                                        }
                                     } else if (action == "stop_session") {
                                         ControlApi.decide(context, requestId, true)
                                         context.startService(
@@ -339,6 +359,9 @@ class MainActivity : ComponentActivity() {
                                         )
                                         context.startService(
                                             Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP)
+                                        )
+                                        context.startService(
+                                            Intent(context, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP)
                                         )
                                     }
                                 } catch (error: Exception) {
