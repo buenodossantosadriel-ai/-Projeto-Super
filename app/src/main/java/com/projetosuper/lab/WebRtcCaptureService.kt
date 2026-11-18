@@ -187,6 +187,12 @@ class WebRtcCaptureService : LifecycleService() {
                 state == PeerConnection.IceConnectionState.CLOSED
             ) stopCapture()
         }
+        override fun onConnectionChange(state: PeerConnection.PeerConnectionState) {
+            android.util.Log.i("ProjetoSuperWebRTC", "PeerConnection state=$state session=$sessionId")
+            if (state == PeerConnection.PeerConnectionState.FAILED ||
+                state == PeerConnection.PeerConnectionState.CLOSED
+            ) stopCapture()
+        }
         override fun onIceConnectionReceivingChange(receiving: Boolean) {}
         override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {}
         override fun onIceCandidate(candidate: IceCandidate) {
