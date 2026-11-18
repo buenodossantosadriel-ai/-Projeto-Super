@@ -122,6 +122,18 @@ object ControlApi {
         )
     }
 
+    suspend fun getWebRtcIceServers(context: Context, sessionId: String): JSONObject = withContext(Dispatchers.IO) {
+        require(sessionId.matches(Regex("[0-9a-fA-F-]{36}"))) { "Sessão WebRTC inválida." }
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo não registrado.")
+        val secret = loadSecret(prefs) ?: throw IllegalStateException("Chave local indisponível.")
+        request(
+            JSONObject().put("action", "webrtc_ice_config")
+                .put("device_id", id).put("session_id", sessionId),
+            secret
+        )
+    }
+
     suspend fun sendWebRtcSignal(
         context: Context,
         sessionId: String,
