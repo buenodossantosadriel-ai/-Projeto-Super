@@ -23,6 +23,10 @@
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <service
+            android:name=".WebRtcCaptureService"
+            android:exported="false"
+            android:foregroundServiceType="camera|mediaProjection" />
+        <service
             android:name=".ScreenCaptureService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
