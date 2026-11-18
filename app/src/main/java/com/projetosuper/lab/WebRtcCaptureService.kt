@@ -167,7 +167,7 @@ class WebRtcCaptureService : LifecycleService() {
             createCameraCapturer(mode == "camera_front")
         }
         val localCapturer = capturer ?: error("Não foi possível encontrar a câmera deste aparelho.")
-        localCapturer.initialize(textureHelper, applicationContext, videoSource!!.capturerObserver)
+        localCapturer.initialize(textureHelper!!, applicationContext, videoSource!!.capturerObserver)
         if (screen) localCapturer.startCapture(960, 540, 20)
         else localCapturer.startCapture(640, 360, 20)
         videoTrack = factory!!.createVideoTrack("projeto-super-video", videoSource)
