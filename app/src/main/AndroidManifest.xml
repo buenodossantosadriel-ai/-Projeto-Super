@@ -9,9 +9,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
 
-    <!-- Visibilidade limitada aos apps com atividade exibida no launcher. -->
+    <!-- Permite consultar somente apps que oferecem uma atividade de launcher. -->
     <queries>
-        
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
 
     <application
