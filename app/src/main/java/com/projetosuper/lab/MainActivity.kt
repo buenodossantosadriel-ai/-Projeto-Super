@@ -109,17 +109,21 @@ class MainActivity : ComponentActivity() {
 
             val permissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestMultiplePermissions()
-            ) { refreshPermissions.value++ }
+            ) {
+                context.getSharedPreferences("projeto_super_prefs", MODE_PRIVATE)
+                    .edit().putBoolean("initial_permissions_requested", true).apply()
+                refreshPermissions.value++
+            }
 
             val photoPicker = rememberLauncherForActivityResult(
                 ActivityResultContracts.PickVisualMedia()
             ) { uri -> selectedMedia.value = uri }
 
-            // Solicita o conjunto inicial apenas uma vez.
+            // Solicita somente permissões ainda não concedidas, uma única vez por instalação.
+            // A confirmação é gravada após o retorno do diálogo do Android.
             LaunchedEffect(Unit) {
                 val prefs = context.getSharedPreferences("projeto_super_prefs", MODE_PRIVATE)
                 if (!prefs.getBoolean("initial_permissions_requested", false)) {
-                    prefs.edit().putBoolean("initial_permissions_requested", true).apply()
                     val requested = mutableListOf(
                         Manifest.permission.CAMERA,
                         Manifest.permission.RECORD_AUDIO,
@@ -127,7 +131,15 @@ class MainActivity : ComponentActivity() {
                         Manifest.permission.ACCESS_COARSE_LOCATION
                     )
                     if (Build.VERSION.SDK_INT >= 33) requested.add(Manifest.permission.POST_NOTIFICATIONS)
-                    permissionLauncher.launch(requested.toTypedArray())
+
+                    val missing = requested.distinct().filter {
+                        ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+                    }
+                    if (missing.isEmpty()) {
+                        prefs.edit().putBoolean("initial_permissions_requested", true).apply()
+                    } else {
+                        permissionLauncher.launch(missing.toTypedArray())
+                    }
                 }
             }
 
