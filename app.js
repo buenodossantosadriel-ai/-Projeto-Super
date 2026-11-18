@@ -556,25 +556,6 @@ async function refreshControlFrames() {
   }
 }
 
-el("btnParearDispositivo")?.addEventListener("click", async () => {
-  const code = el("pairingCode").value.trim();
-  if (!/^\d{8}$/.test(code)) {
-    controlMessage("Digite o código de pareamento de 8 dígitos.", true);
-    return;
-  }
-  el("btnParearDispositivo").disabled = true;
-  try {
-    await controlPost({ action: "pair_device", pairing_code: code });
-    el("pairingCode").value = "";
-    controlMessage("Aparelho vinculado com sucesso. Os pedidos ainda exigem confirmação local.");
-    await refreshControlDevices();
-  } catch (error) {
-    controlMessage(error.message, true);
-  } finally {
-    el("btnParearDispositivo").disabled = false;
-  }
-});
-
 let controlPollingStarted = false;
 function showAdminPanel(isAdmin) {
   el("adminLogin").hidden = isAdmin;
