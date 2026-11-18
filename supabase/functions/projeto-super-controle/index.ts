@@ -67,6 +67,7 @@ function randomHex(size: number) {
 }
 async function clearSessionFrames(admin: ReturnType<typeof createClient>, sessionIds: string[]) {
   if (!sessionIds.length) return;
+  await admin.from("projeto_super_webrtc_signals").delete().in("session_id", sessionIds);
   const { data: frames } = await admin.from("projeto_super_live_frames")
     .select("id,storage_path").in("session_id", sessionIds);
   if (frames?.length) {
