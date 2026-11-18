@@ -124,6 +124,46 @@ class MainActivity : ComponentActivity() {
                 permissionRefresh.value++
             }
 
+            val pendingAudioPermissionRequest = remember { mutableStateOf<JSONObject?>(null) }
+
+            val audioPermissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestMultiplePermissions()
+            ) { results ->
+                val request = pendingAudioPermissionRequest.value
+                pendingAudioPermissionRequest.value = null
+                if (request != null) {
+                    val granted = results.values.all { it } &&
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED &&
+                        (Build.VERSION.SDK_INT < 33 ||
+                            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
+                    scope.launch {
+                        busy.value = true
+                        try {
+                            if (!granted) {
+                                ControlApi.decide(context, request.optString("id"), false)
+                                deviceError.value = "Permissão de microfone ou notificação recusada. Autorize no Android e tente novamente."
+                            } else {
+                                val response = ControlApi.decide(context, request.optString("id"), true)
+                                val sessionId = response.optString("session_id")
+                                check(sessionId.isNotBlank()) { "O servidor não confirmou a sessão de áudio." }
+                                val action = request.optString("action")
+                                val start = Intent(context, AudioCaptureService::class.java)
+                                    .setAction(AudioCaptureService.ACTION_START)
+                                    .putExtra(AudioCaptureService.EXTRA_SESSION_ID, sessionId)
+                                    .putExtra(AudioCaptureService.EXTRA_MODE, if (action == "microphone_record") "recording" else "live")
+                                ContextCompat.startForegroundService(context, start)
+                                deviceError.value = null
+                            }
+                        } catch (error: Exception) {
+                            deviceError.value = error.message ?: "Não foi possível iniciar o áudio."
+                        } finally {
+                            busy.value = false
+                            permissionRefresh.value++
+                        }
+                    }
+                }
+            }
+
             val photoPicker = rememberLauncherForActivityResult(
                 ActivityResultContracts.PickVisualMedia()
             ) { uri -> selectedMedia.value = uri }
@@ -350,10 +390,22 @@ class MainActivity : ComponentActivity() {
                                                     screenCaptureLauncher.launch(manager.createScreenCaptureIntent())
                                                 }
                                                 else -> {
+                                                    if (action == "microphone_live" || action == "microphone_record") {
+                                                        val required = mutableListOf(Manifest.permission.RECORD_AUDIO)
+                                                        if (Build.VERSION.SDK_INT >= 33) required.add(Manifest.permission.POST_NOTIFICATIONS)
+                                                        val missing = required.distinct().filter {
+                                                            ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+                                                        }
+                                                        if (missing.isNotEmpty()) {
+                                                            pendingAudioPermissionRequest.value = request
+                                                            audioPermissionLauncher.launch(missing.toTypedArray())
+                                                            return@launch
+                                                        }
+                                                    }
                                                     if (action.startsWith("open_app:")) {
                                                         val packageName = action.substringAfter("open_app:")
                                                         val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
-                                                        check(launchIntent != null) { "Este aplicativo não está instalado ou não pode ser aberto." }
+                                                        check(launchIntent != null) { "Este aplicativo não está instalado ou não pode ser aberto neste aparelho." }
                                                         ControlApi.decide(context, request.optString("id"), true)
                                                         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                                         context.startActivity(launchIntent)
