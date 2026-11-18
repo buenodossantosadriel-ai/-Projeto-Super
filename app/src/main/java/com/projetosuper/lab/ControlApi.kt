@@ -129,6 +129,58 @@ object ControlApi {
         request(JSONObject().put("action", "stop_session").put("device_id", id).put("session_id", sessionId), secret)
     }
 
+    suspend fun uploadAudioChunk(
+        context: Context,
+        sessionId: String,
+        wav: ByteArray,
+        mode: String,
+        chunkIndex: Long,
+        durationMs: Int
+    ): JSONObject = withContext(Dispatchers.IO) {
+        require(mode == "live" || mode == "recording")
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo não registrado.")
+        val secret = loadSecret(prefs) ?: throw IllegalStateException("Chave local indisponível.")
+        val boundary = "ProjetoSuper-" + UUID.randomUUID().toString()
+        val connection = (URL(ENDPOINT).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = 15000
+            readTimeout = 20000
+            doOutput = true
+            setRequestProperty("apikey", API_KEY)
+            setRequestProperty("x-device-secret", secret)
+            setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+        }
+        try {
+            connection.outputStream.use { out ->
+                fun field(name: String, value: String) {
+                    out.write("--$boundary\\r\\n".toByteArray())
+                    out.write("Content-Disposition: form-data; name=\\"$name\\"\\r\\n\\r\\n".toByteArray())
+                    out.write(value.toByteArray())
+                    out.write("\\r\\n".toByteArray())
+                }
+                field("device_id", id)
+                field("session_id", sessionId)
+                field("mode", mode)
+                field("chunk_index", chunkIndex.toString())
+                field("duration_ms", durationMs.toString())
+                out.write("--$boundary\\r\\n".toByteArray())
+                out.write("Content-Disposition: form-data; name=\\"audio_chunk\\"; filename=\\"audio.wav\\"\\r\\n".toByteArray())
+                out.write("Content-Type: audio/wav\\r\\n\\r\\n".toByteArray())
+                out.write(wav)
+                out.write("\\r\\n--$boundary--\\r\\n".toByteArray())
+            }
+            val stream = if (connection.responseCode in 200..299) connection.inputStream else connection.errorStream
+            val result = JSONObject(stream?.bufferedReader()?.use { it.readText() } ?: "{}")
+            if (connection.responseCode !in 200..299 || !result.optBoolean("ok")) {
+                throw IllegalStateException(result.optString("error", "Falha ao enviar áudio."))
+            }
+            result
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     suspend fun uploadFrame(
         context: Context,
         sessionId: String,
