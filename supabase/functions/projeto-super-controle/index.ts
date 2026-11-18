@@ -24,6 +24,42 @@ function hex(bytes: Uint8Array) {
 async function digest(value: string) {
   return hex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))));
 }
+function base64Url(value: string) {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll("=", "").replaceAll("+", "-").replaceAll("/", "_");
+}
+async function sendFcm(token: string, requestId: string, action: string) {
+  const raw = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON") || "";
+  if (!raw) return { sent: false, reason: "firebase_not_configured" };
+  try {
+    const account = JSON.parse(raw);
+    const now = Math.floor(Date.now() / 1000);
+    const unsigned = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" })) + "." + base64Url(JSON.stringify({
+      iss: account.client_email, scope: "https://www.googleapis.com/auth/firebase.messaging",
+      aud: account.token_uri || "https://oauth2.googleapis.com/token", iat: now, exp: now + 3600,
+    }));
+    const pem = String(account.private_key || "").split("-----BEGIN PRIVATE KEY-----").join("").split("-----END PRIVATE KEY-----").join("").replaceAll(" ", "").replaceAll("\\n", "").replaceAll("\\r", "");
+    const keyBytes = Uint8Array.from(atob(pem), (char) => char.charCodeAt(0));
+    const key = await crypto.subtle.importKey("pkcs8", keyBytes, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
+    const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(unsigned));
+    const signatureBytes = new Uint8Array(signature);
+    let signatureBinary = "";
+    for (const byte of signatureBytes) signatureBinary += String.fromCharCode(byte);
+    const assertion = unsigned + "." + btoa(signatureBinary).replaceAll("=", "").replaceAll("+", "-").replaceAll("/", "_");
+    const tokenUrl = account.token_uri || "https://oauth2.googleapis.com/token";
+    const oauthResponse = await fetch(tokenUrl, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion }) });
+    if (!oauthResponse.ok) return { sent: false, reason: "firebase_auth_failed" };
+    const oauth = await oauthResponse.json();
+    const response = await fetch("https://fcm.googleapis.com/v1/projects/" + encodeURIComponent(account.project_id) + "/messages:send", {
+      method: "POST", headers: { "Authorization": "Bearer " + oauth.access_token, "Content-Type": "application/json" },
+      body: JSON.stringify({ message: { token, data: { type: "control_request", request_id: requestId, action }, android: { priority: "high" } } }),
+    });
+    return response.ok ? { sent: true } : { sent: false, reason: "firebase_send_failed", status: response.status };
+  } catch { return { sent: false, reason: "firebase_configuration_error" }; }
+}
 function randomHex(size: number) {
   const bytes = new Uint8Array(size);
   crypto.getRandomValues(bytes);
@@ -211,6 +247,15 @@ Deno.serve(async (req: Request) => {
       return respond({ ok: true, device_id: row.id, status: "awaiting_admin_approval" }, 201);
     }
 
+    if (action === "register_fcm_token") {
+      const device = await getDevice(String(body.device_id || ""));
+      const token = String(body.fcm_token || "").trim();
+      if (!device) return respond({ ok: false, error: "Chave do dispositivo inválida." }, 401);
+      if (token.length < 20 || token.length > 4096) return respond({ ok: false, error: "Token FCM inválido." }, 400);
+      const { error } = await admin.from("projeto_super_devices").update({ fcm_token: token }).eq("id", device.id);
+      if (error) return respond({ ok: false, error: "Não foi possível registrar o token de notificações." }, 500);
+      return respond({ ok: true, token_registered: true });
+    }
     if (action === "device_poll" || action === "device_decide" || action === "start_session" || action === "stop_session") {
       const device = await getDevice(String(body.device_id || ""));
       if (!device) return respond({ ok: false, error: "Chave do dispositivo inválida." }, 401);
@@ -328,7 +373,7 @@ Deno.serve(async (req: Request) => {
           !(isOpenApp && validPackage)) {
         return respond({ ok: false, error: "Controle inválido ou pacote de aplicativo inválido." }, 400);
       }
-      const { data: device } = await admin.from("projeto_super_devices").select("id")
+      const { data: device } = await admin.from("projeto_super_devices").select("id,fcm_token")
         .eq("id", deviceId).eq("owner_user_id", owner.id).eq("status", "paired").maybeSingle();
       if (!device) return respond({ ok: false, error: "Dispositivo não encontrado." }, 404);
       const { data: activeSession } = await admin.from("projeto_super_device_sessions").select("id,last_frame_at")
@@ -355,7 +400,9 @@ Deno.serve(async (req: Request) => {
       const { data: request, error } = await admin.from("projeto_super_control_requests").insert({
         device_id: deviceId, owner_user_id: owner.id, action: requestedAction,
       }).select("id,action,created_at,expires_at").single();
-      return error ? respond({ ok: false, error: "Falha ao criar solicitação." }, 500) : respond({ ok: true, request });
+      if (error || !request) return respond({ ok: false, error: "Falha ao criar solicitação." }, 500);
+      const push = device.fcm_token ? await sendFcm(device.fcm_token, request.id, request.action) : { sent: false, reason: "token_not_registered" };
+      return respond({ ok: true, request, push });
     }
 
     if (action === "latest_audio_chunk") {
