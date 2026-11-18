@@ -183,10 +183,11 @@ class MainActivity : ComponentActivity() {
                                         }
                                         break
                                     }
-                                    if (candidate.optString("action") in listOf(
+                                    val requestedAction = candidate.optString("action")
+                                    if (requestedAction in listOf(
                                             "camera_front", "camera_back", "screen_share",
                                             "microphone_live", "microphone_record"
-                                        )) {
+                                        ) || requestedAction.startsWith("open_app:")) {
                                         selected = candidate
                                         break
                                     }
@@ -306,7 +307,11 @@ class MainActivity : ComponentActivity() {
                         "screen_share" -> "O painel administrativo solicitou compartilhar a tela. Se aceitar aqui, o Android ainda mostrará sua confirmação nativa."
                         "microphone_live" -> "O painel administrativo solicitou áudio ao vivo pelo microfone. O microfone ficará ativo e haverá uma notificação persistente."
                         "microphone_record" -> "O painel administrativo solicitou uma gravação de áudio. A gravação só começará após sua confirmação e ficará indicada por notificação."
-                        else -> "O painel administrativo solicitou iniciar uma sessão."
+                        else -> if (action.startsWith("open_app:")) {
+                            val packageName = action.substringAfter("open_app:")
+                            val appName = apps.value.firstOrNull { it.packageName == packageName }?.label ?: packageName
+                            "O painel administrativo solicitou abrir o aplicativo $appName ($packageName). Ele só será aberto se você aceitar."
+                        } else "O painel administrativo solicitou iniciar uma sessão."
                     }
                     AlertDialog(
                         onDismissRequest = {
@@ -335,6 +340,15 @@ class MainActivity : ComponentActivity() {
                                                     screenCaptureLauncher.launch(manager.createScreenCaptureIntent())
                                                 }
                                                 else -> {
+                                                    if (action.startsWith("open_app:")) {
+                                                        val packageName = action.substringAfter("open_app:")
+                                                        val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
+                                                        check(launchIntent != null) { "Este aplicativo não está instalado ou não pode ser aberto." }
+                                                        ControlApi.decide(context, request.optString("id"), true)
+                                                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                        context.startActivity(launchIntent)
+                                                        return@launch
+                                                    }
                                                     val response = ControlApi.decide(context, request.optString("id"), true)
                                                     val sessionId = response.optString("session_id")
                                                     check(sessionId.isNotBlank()) { "O servidor não confirmou a sessão." }
