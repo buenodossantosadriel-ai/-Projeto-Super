@@ -1,0 +1,41 @@
+name: Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - android-native
+      - feature/fcm-permission-prompts
+      - feature/webrtc-adaptive-streaming
+
+permissions:
+  contents: read
+
+concurrency:
+  group: projeto-super-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Compilar APK de teste
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Compilar APK
+        run: gradle assembleDebug
+      - name: Disponibilizar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: projeto-super-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
