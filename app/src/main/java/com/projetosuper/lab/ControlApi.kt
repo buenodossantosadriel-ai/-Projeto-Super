@@ -57,7 +57,7 @@ object ControlApi {
     private fun loadSecret(prefs: android.content.SharedPreferences): String? =
         prefs.getString("device_secret_enc", null)?.let { decryptSecret(it) }
 
-    data class Credentials(val deviceId: String, val secret: String, val pairingCode: String?)
+    data class Credentials(val deviceId: String, val secret: String)
 
     private fun request(
         payload: JSONObject,
@@ -91,7 +91,7 @@ object ControlApi {
         val oldId = prefs.getString("device_id", null)
         val oldSecret = loadSecret(prefs)
         if (!oldId.isNullOrBlank() && !oldSecret.isNullOrBlank()) {
-            return@withContext Credentials(oldId, oldSecret, prefs.getString("pairing_code", null))
+            return@withContext Credentials(oldId, oldSecret)
         }
         val secret = UUID.randomUUID().toString() + UUID.randomUUID().toString()
         val payload = JSONObject()
@@ -99,24 +99,9 @@ object ControlApi {
             .put("device_name", android.os.Build.MODEL ?: "Android de laboratório")
         val result = request(payload, secret)
         val id = result.getString("device_id")
-        val code = result.getString("pairing_code")
         prefs.edit().putString("device_id", id).putString("device_secret_enc", encryptSecret(secret))
-            .putString("pairing_code", code).apply()
-        Credentials(id, secret, code)
-    }
-
-    suspend fun renewPairing(context: Context): Credentials = withContext(Dispatchers.IO) {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo ainda não registrado.")
-        val secret = loadSecret(prefs) ?: throw IllegalStateException("Chave local indisponível.")
-        val result = request(
-            JSONObject().put("action", "register_device").put("device_id", id)
-                .put("device_name", android.os.Build.MODEL ?: "Android de laboratório"),
-            secret
-        )
-        val code = result.getString("pairing_code")
-        prefs.edit().putString("pairing_code", code).apply()
-        Credentials(id, secret, code)
+            .remove("pairing_code").apply()
+        Credentials(id, secret)
     }
 
     suspend fun poll(context: Context): JSONObject = withContext(Dispatchers.IO) {
