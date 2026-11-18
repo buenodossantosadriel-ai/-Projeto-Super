@@ -74,7 +74,6 @@ class MainActivity : ComponentActivity() {
             val permissionRefreshCount = refreshPermissions.value
             val selectedMedia = remember { mutableStateOf<Uri?>(null) }
             val deviceId = remember { mutableStateOf<String?>(null) }
-            val pairingCode = remember { mutableStateOf<String?>(null) }
             val devicePaired = remember { mutableStateOf(false) }
             val deviceStatus = remember { mutableStateOf("Registrando dispositivo seguro...") }
             val deviceError = remember { mutableStateOf<String?>(null) }
@@ -136,8 +135,7 @@ class MainActivity : ComponentActivity() {
                 try {
                     val credentials = ControlApi.ensureRegistered(context)
                     deviceId.value = credentials.deviceId
-                    pairingCode.value = credentials.pairingCode
-                    deviceStatus.value = "Dispositivo registrado. Aguardando pareamento pelo endpoint."
+                    deviceStatus.value = "Dispositivo registrado. Aguardando aprovação no painel administrativo."
                 } catch (error: Exception) {
                     deviceError.value = error.message ?: "Falha ao registrar o dispositivo."
                     deviceStatus.value = "Não foi possível conectar ao servidor."
@@ -152,9 +150,9 @@ class MainActivity : ComponentActivity() {
                             val response = ControlApi.poll(context)
                             devicePaired.value = response.optBoolean("paired")
                             deviceStatus.value = if (devicePaired.value) {
-                                "Dispositivo pareado. Pedidos do endpoint serão exibidos aqui."
+                                "Dispositivo vinculado. Pedidos serão exibidos aqui e exigem sua confirmação."
                             } else {
-                                "Aguardando pareamento pelo código exibido abaixo."
+                                "Dispositivo registrado. Aguardando aprovação no painel administrativo."
                             }
                             val requests = response.optJSONArray("requests")
                             if (pendingRequest.value == null && requests != null && requests.length() > 0) {
@@ -202,28 +200,10 @@ class MainActivity : ComponentActivity() {
                         item {
                             Text("Vincular ao endpoint", style = MaterialTheme.typography.titleLarge)
                             Text(deviceStatus.value)
-                            if (!devicePaired.value && !pairingCode.value.isNullOrBlank()) {
-                                Text("Código de pareamento", style = MaterialTheme.typography.labelLarge)
-                                Text(pairingCode.value!!, style = MaterialTheme.typography.headlineMedium)
-                                Text("Digite este código no painel do endpoint. Ele expira em 10 minutos.")
-                                Button(
-                                    onClick = {
-                                        scope.launch {
-                                            try {
-                                                val credentials = ControlApi.renewPairing(context)
-                                                pairingCode.value = credentials.pairingCode
-                                                deviceError.value = null
-                                            } catch (error: Exception) {
-                                                deviceError.value = error.message
-                                            }
-                                        }
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) { Text("Gerar novo código") }
-                            }
-                            if (devicePaired.value) {
-                                Text("Este aparelho está vinculado à conta do painel.")
-                            }
+                            Text(
+                                if (devicePaired.value) "Este aparelho está vinculado à conta administrativa."
+                                else "O administrador precisa aprovar este aparelho no dashboard. Nenhum código é necessário."
+                            )
                             Button(
                                 onClick = {
                                     context.startService(
