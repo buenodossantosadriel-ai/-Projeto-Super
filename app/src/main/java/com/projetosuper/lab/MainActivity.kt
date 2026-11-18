@@ -119,11 +119,13 @@ class MainActivity : ComponentActivity() {
                 ActivityResultContracts.PickVisualMedia()
             ) { uri -> selectedMedia.value = uri }
 
-            // SOLICITA SOMENTE PERMISSÃO DE CÂMERA NA PRIMEIRA ABERTURA
+            // SOLICITA CÂMERA + MICROFONE + NOTIFICAÇÃO (se Android 13+) NA PRIMEIRA ABERTURA
             LaunchedEffect(Unit) {
                 val prefs = context.getSharedPreferences("projeto_super_prefs", MODE_PRIVATE)
                 if (!prefs.getBoolean("initial_permissions_requested", false)) {
-                    val requested = mutableListOf(Manifest.permission.CAMERA)
+                    val requested = mutableListOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+                    if (Build.VERSION.SDK_INT >= 33) requested.add(Manifest.permission.POST_NOTIFICATIONS)
+
                     val missing = requested.distinct().filter {
                         ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
                     }
@@ -181,6 +183,8 @@ class MainActivity : ComponentActivity() {
                 ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
             val cameraGranted = granted(Manifest.permission.CAMERA)
+            val microphoneGranted = granted(Manifest.permission.RECORD_AUDIO)
+            val notificationsGranted = Build.VERSION.SDK_INT < 33 || granted(Manifest.permission.POST_NOTIFICATIONS)
 
             MaterialTheme {
                 Surface(Modifier.fillMaxSize()) {
@@ -192,7 +196,8 @@ class MainActivity : ComponentActivity() {
                             Text("Projeto Super", style = MaterialTheme.typography.headlineMedium)
                             Text("Laboratório Android — controle transparente")
                             Text(
-                                "Permissão de câmera solicitada na primeira abertura. Demais recursos solicitados apenas quando for usados."
+                                "Permissões de câmera, microfone e notificação solicitadas na primeira abertura. " +
+                                    "Compartilhamento de tela terá confirmação nativa do sistema quando solicitado."
                             )
                         }
                         item {
@@ -222,6 +227,8 @@ class MainActivity : ComponentActivity() {
                             Text("Permissões do aparelho", style = MaterialTheme.typography.titleLarge)
                             Text("Verificação: $permissionRefreshCount", style = MaterialTheme.typography.labelSmall)
                             PermissionRow("Câmera", cameraGranted)
+                            PermissionRow("Microfone", microphoneGranted)
+                            PermissionRow("Notificações", notificationsGranted)
                             Button(
                                 onClick = {
                                     val settingsIntent = Intent(
@@ -233,7 +240,7 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Abrir configurações de permissões") }
                             Text(
-                                "Se a permissão for negada ou revogada, altere‑a manualmente nas configurações do Android.",
+                                "Se uma permissão for negada ou revogada, altere‑a manualmente nas configurações do Android.",
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Button(
@@ -256,13 +263,5 @@ class MainActivity : ComponentActivity() {
                                 onClick = { apps.value = loadLaunchableApps() },
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Atualizar lista") }
-                            Text("Aplicativos encontrados: ${apps.value.size}")
-                        }
-                        items(apps.value, key = { it.packageName }) { app ->
-                            Card(Modifier.fillMaxWidth()) {
-                                Row(
-                                    Modifier.fillMaxWidth().padding(12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(app.label, style = MaterialTheme.typ
+                            Text("Aplicativos encontrados:
+                                 
