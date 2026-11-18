@@ -4,6 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const SITE_ORIGIN = "https://projeto-super-eta.vercel.app";
 const BUCKET = "projeto-super-uploads";
 const MAX_FRAME_BYTES = 2 * 1024 * 1024;
+const MAX_AUDIO_BYTES = 512 * 1024;
 const cors = {
   "Access-Control-Allow-Origin": SITE_ORIGIN,
   "Access-Control-Allow-Headers": "authorization, apikey, x-client-info, content-type, x-device-secret",
@@ -32,9 +33,20 @@ async function clearSessionFrames(admin: ReturnType<typeof createClient>, sessio
   if (!sessionIds.length) return;
   const { data: frames } = await admin.from("projeto_super_live_frames")
     .select("id,storage_path").in("session_id", sessionIds);
-  if (!frames?.length) return;
-  await admin.storage.from(BUCKET).remove(frames.map((frame) => frame.storage_path));
-  await admin.from("projeto_super_live_frames").delete().in("id", frames.map((frame) => frame.id));
+  if (frames?.length) {
+    await admin.storage.from(BUCKET).remove(frames.map((frame) => frame.storage_path));
+    await admin.from("projeto_super_live_frames").delete().in("id", frames.map((frame) => frame.id));
+  }
+}
+async function clearAudioChunks(admin: ReturnType<typeof createClient>, sessionIds: string[], mode?: string) {
+  if (!sessionIds.length) return;
+  let query = admin.from("projeto_super_audio_chunks").select("id,storage_path").in("session_id", sessionIds);
+  if (mode) query = query.eq("mode", mode);
+  const { data: chunks } = await query;
+  if (chunks?.length) {
+    await admin.storage.from(BUCKET).remove(chunks.map((chunk) => chunk.storage_path));
+    await admin.from("projeto_super_audio_chunks").delete().in("id", chunks.map((chunk) => chunk.id));
+  }
 }
 
 Deno.serve(async (req: Request) => {
@@ -90,6 +102,57 @@ Deno.serve(async (req: Request) => {
       const deviceId = String(form.get("device_id") || "");
       const sessionId = String(form.get("session_id") || "");
       const device = await getDevice(deviceId);
+      const audioFile = form.get("audio_chunk");
+      if (audioFile instanceof File) {
+        const mode = String(form.get("mode") || "");
+        const chunkIndex = Number(form.get("chunk_index") || -1);
+        const durationMs = Number(form.get("duration_ms") || 0);
+        if (!device || device.status !== "paired" || !device.owner_user_id) return respond({ ok: false, error: "Dispositivo não autenticado ou não pareado." }, 401);
+        if (!["live", "recording"].includes(mode) || !Number.isSafeInteger(chunkIndex) || chunkIndex < 0 ||
+            !Number.isInteger(durationMs) || durationMs < 1 || durationMs > 10000) {
+          return respond({ ok: false, error: "Metadados do áudio inválidos." }, 400);
+        }
+        if (audioFile.size < 44 || audioFile.size > MAX_AUDIO_BYTES) return respond({ ok: false, error: "Trecho de áudio inválido ou acima de 512 KB." }, 413);
+        if (audioFile.type !== "audio/wav" && audioFile.type !== "application/octet-stream") return respond({ ok: false, error: "Formato de áudio não permitido." }, 415);
+        const { data: audioSession } = await admin.from("projeto_super_device_sessions")
+          .select("id,status,owner_user_id,session_type").eq("id", sessionId).eq("device_id", deviceId).maybeSingle();
+        if (!audioSession || audioSession.status !== "active" || audioSession.owner_user_id !== device.owner_user_id ||
+            !["microphone_live", "microphone_record"].includes(audioSession.session_type)) {
+          return respond({ ok: false, error: "Sessão de áudio não está ativa." }, 409);
+        }
+        const path = "audio/" + deviceId + "/" + sessionId + "/" + mode + "/" + String(chunkIndex).padStart(8, "0") + ".wav";
+        const bytes = new Uint8Array(await audioFile.arrayBuffer());
+        const { error: uploadError } = await admin.storage.from(BUCKET).upload(path, bytes, {
+          contentType: "audio/wav", cacheControl: "0", upsert: true,
+        });
+        if (uploadError) return respond({ ok: false, error: "Falha ao armazenar áudio." }, 502);
+        const { error: rowError } = await admin.from("projeto_super_audio_chunks").upsert({
+          device_id: deviceId, session_id: sessionId, owner_user_id: device.owner_user_id,
+          chunk_index: chunkIndex, storage_path: path, mime_type: "audio/wav", mode, duration_ms: durationMs,
+        }, { onConflict: "session_id,chunk_index" });
+        if (rowError) {
+          await admin.storage.from(BUCKET).remove([path]);
+          return respond({ ok: false, error: "Falha ao registrar trecho de áudio." }, 500);
+        }
+        await admin.from("projeto_super_device_sessions").update({ last_frame_at: new Date().toISOString() }).eq("id", sessionId);
+        if (mode === "live") {
+          const { data: oldChunks } = await admin.from("projeto_super_audio_chunks").select("id,storage_path")
+            .eq("session_id", sessionId).eq("mode", "live").order("chunk_index", { ascending: false }).range(8, 500);
+          if (oldChunks?.length) {
+            await admin.storage.from(BUCKET).remove(oldChunks.map((x) => x.storage_path));
+            await admin.from("projeto_super_audio_chunks").delete().in("id", oldChunks.map((x) => x.id));
+          }
+        } else {
+          const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+          const { data: expired } = await admin.from("projeto_super_audio_chunks").select("id,storage_path")
+            .eq("owner_user_id", device.owner_user_id).eq("mode", "recording").lt("created_at", cutoff);
+          if (expired?.length) {
+            await admin.storage.from(BUCKET).remove(expired.map((x) => x.storage_path));
+            await admin.from("projeto_super_audio_chunks").delete().in("id", expired.map((x) => x.id));
+          }
+        }
+        return respond({ ok: true, received_at: new Date().toISOString() }, 201);
+      }
       const file = form.get("frame");
       if (!device || device.status !== "paired" || !device.owner_user_id) return respond({ ok: false, error: "Dispositivo não autenticado ou não pareado." }, 401);
       if (!(file instanceof File) || file.size < 1 || file.size > MAX_FRAME_BYTES) return respond({ ok: false, error: "Quadro inválido ou acima de 2 MB." }, 413);
@@ -174,11 +237,13 @@ Deno.serve(async (req: Request) => {
           await admin.from("projeto_super_device_sessions").update({
             status: "stopped", stopped_at: new Date().toISOString(),
           }).eq("device_id", device.id).eq("status", "active");
-          await clearSessionFrames(admin, (activeSessions || []).map((session) => session.id));
+          const stoppedIds = (activeSessions || []).map((session) => session.id);
+          await clearSessionFrames(admin, stoppedIds);
+          await clearAudioChunks(admin, stoppedIds, "live");
           return respond({ ok: true, decision, stopped: true });
         }
         const sessionType = request.action;
-        if (!["camera_front", "camera_back", "screen_share"].includes(sessionType)) return respond({ ok: false, error: "Ação não suportada." }, 400);
+        if (!["camera_front", "camera_back", "screen_share", "microphone_live", "microphone_record"].includes(sessionType)) return respond({ ok: false, error: "Ação não suportada." }, 400);
         const { data: session, error } = await admin.from("projeto_super_device_sessions").insert({
           device_id: device.id, owner_user_id: device.owner_user_id, session_type: sessionType,
           local_consent_at: new Date().toISOString(), status: "active",
@@ -192,6 +257,7 @@ Deno.serve(async (req: Request) => {
       }).eq("id", sessionId).eq("device_id", device.id).eq("status", "active");
       if (error) return respond({ ok: false, error: "Não foi possível encerrar a sessão." }, 500);
       await clearSessionFrames(admin, [sessionId]);
+      await clearAudioChunks(admin, [sessionId], "live");
       return respond({ ok: true });
     }
 
@@ -236,6 +302,7 @@ Deno.serve(async (req: Request) => {
             status: "stopped", stopped_at: new Date().toISOString(),
           }).eq("id", active.id).eq("status", "active");
           await clearSessionFrames(admin, [active.id]);
+          await clearAudioChunks(admin, [active.id], "live");
           devices.push({ ...device, active_session: null });
         } else {
           devices.push({ ...device, active_session: active || null });
@@ -247,7 +314,7 @@ Deno.serve(async (req: Request) => {
     if (action === "request_control") {
       const deviceId = String(body.device_id || "");
       const requestedAction = String(body.control || "");
-      if (!["camera_front", "camera_back", "screen_share", "stop_session"].includes(requestedAction)) {
+      if (!["camera_front", "camera_back", "screen_share", "microphone_live", "microphone_record", "stop_session"].includes(requestedAction)) {
         return respond({ ok: false, error: "Controle inválido." }, 400);
       }
       const { data: device } = await admin.from("projeto_super_devices").select("id")
@@ -262,6 +329,7 @@ Deno.serve(async (req: Request) => {
           status: "stopped", stopped_at: new Date().toISOString(),
         }).eq("id", activeSession[0].id).eq("status", "active");
         await clearSessionFrames(admin, [activeSession[0].id]);
+        await clearAudioChunks(admin, [activeSession[0].id], "live");
         hasActiveSession = false;
       }
       if (requestedAction === "stop_session" && !hasActiveSession) {
@@ -277,6 +345,40 @@ Deno.serve(async (req: Request) => {
         device_id: deviceId, owner_user_id: owner.id, action: requestedAction,
       }).select("id,action,created_at,expires_at").single();
       return error ? respond({ ok: false, error: "Falha ao criar solicitação." }, 500) : respond({ ok: true, request });
+    }
+
+    if (action === "latest_audio_chunk") {
+      const sessionId = String(body.session_id || "");
+      const { data: session } = await admin.from("projeto_super_device_sessions")
+        .select("id,status,session_type").eq("id", sessionId).eq("owner_user_id", owner.id).maybeSingle();
+      if (!session || session.session_type !== "microphone_live") return respond({ ok: false, error: "Sessão de áudio ao vivo não encontrada." }, 404);
+      if (session.status !== "active") return respond({ ok: true, chunk: null, session_status: "stopped" });
+      const { data: chunk } = await admin.from("projeto_super_audio_chunks").select("storage_path,created_at,chunk_index,duration_ms")
+        .eq("session_id", sessionId).eq("owner_user_id", owner.id).eq("mode", "live")
+        .order("chunk_index", { ascending: false }).limit(1).maybeSingle();
+      if (!chunk) return respond({ ok: true, chunk: null, session_status: "active" });
+      const { data: signed, error } = await admin.storage.from(BUCKET).createSignedUrl(chunk.storage_path, 30);
+      if (error || !signed) return respond({ ok: false, error: "Não foi possível abrir o trecho de áudio." }, 500);
+      return respond({ ok: true, chunk: { url: signed.signedUrl, chunk_index: chunk.chunk_index, duration_ms: chunk.duration_ms, created_at: chunk.created_at }, session_status: "active" });
+    }
+
+    if (action === "list_audio_recording") {
+      const sessionId = String(body.session_id || "");
+      const { data: session } = await admin.from("projeto_super_device_sessions")
+        .select("id,status,session_type").eq("id", sessionId).eq("owner_user_id", owner.id).maybeSingle();
+      if (!session || session.session_type !== "microphone_record" || session.status !== "stopped") {
+        return respond({ ok: false, error: "Gravação indisponível ou ainda em andamento." }, 404);
+      }
+      const { data: chunks, error } = await admin.from("projeto_super_audio_chunks")
+        .select("storage_path,chunk_index,duration_ms,created_at").eq("session_id", sessionId)
+        .eq("owner_user_id", owner.id).eq("mode", "recording").order("chunk_index", { ascending: true });
+      if (error) return respond({ ok: false, error: "Falha ao listar a gravação." }, 500);
+      const items = [];
+      for (const chunk of chunks || []) {
+        const { data: signed, error: signError } = await admin.storage.from(BUCKET).createSignedUrl(chunk.storage_path, 300);
+        if (!signError && signed) items.push({ url: signed.signedUrl, chunk_index: chunk.chunk_index, duration_ms: chunk.duration_ms });
+      }
+      return respond({ ok: true, chunks: items });
     }
 
     if (action === "latest_frame") {
@@ -305,6 +407,7 @@ Deno.serve(async (req: Request) => {
         status: "stopped", stopped_at: new Date().toISOString(),
       }).eq("device_id", deviceId).eq("status", "active");
       await clearSessionFrames(admin, sessionIds);
+      await clearAudioChunks(admin, sessionIds);
       const { error } = await admin.from("projeto_super_devices").update({ status: "revoked" })
         .eq("id", deviceId).eq("owner_user_id", owner.id);
       return error ? respond({ ok: false, error: "Falha ao revogar dispositivo." }, 500) : respond({ ok: true });
