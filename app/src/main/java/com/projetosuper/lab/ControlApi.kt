@@ -122,6 +122,39 @@ object ControlApi {
         )
     }
 
+    suspend fun sendWebRtcSignal(
+        context: Context,
+        sessionId: String,
+        signalType: String,
+        signalPayload: JSONObject
+    ): JSONObject = withContext(Dispatchers.IO) {
+        require(signalType in setOf("offer", "answer", "candidate", "renegotiate", "hangup"))
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo não registrado.")
+        val secret = loadSecret(prefs) ?: throw IllegalStateException("Chave local indisponível.")
+        request(
+            JSONObject().put("action", "webrtc_send").put("device_id", id)
+                .put("session_id", sessionId).put("signal_type", signalType)
+                .put("payload", signalPayload),
+            secret
+        )
+    }
+
+    suspend fun pollWebRtcSignals(
+        context: Context,
+        sessionId: String,
+        afterId: Long
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo não registrado.")
+        val secret = loadSecret(prefs) ?: throw IllegalStateException("Chave local indisponível.")
+        request(
+            JSONObject().put("action", "webrtc_poll").put("device_id", id)
+                .put("session_id", sessionId).put("after_id", afterId),
+            secret
+        )
+    }
+
     suspend fun stopSession(context: Context, sessionId: String): JSONObject = withContext(Dispatchers.IO) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo não registrado.")
