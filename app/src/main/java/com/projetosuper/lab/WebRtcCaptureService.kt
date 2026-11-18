@@ -136,10 +136,15 @@ class WebRtcCaptureService : LifecycleService() {
         rtcConfig.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
         peerConnection = factory!!.createPeerConnection(rtcConfig, peerObserver)
             ?: error("Não foi possível criar PeerConnection.")
-        videoSource = factory!!.createVideoSource(false)
+        // ScreenCapturerAndroid precisa que a VideoSource seja marcada como screencast.
+        videoSource = factory!!.createVideoSource(mode == "screen")
         textureHelper = SurfaceTextureHelper.create("ProjetoSuperCapture", eglContext)
         capturer = createCapturer(intent)
         capturer!!.initialize(textureHelper, applicationContext, videoSource!!.capturerObserver)
+        videoTrack = factory!!.createVideoTrack("super-video-$sessionId", videoSource)
+        videoTrack!!.setEnabled(true)
+        peerConnection!!.addTrack(videoTrack, listOf("super-stream-$sessionId"))
+        // Vincula a faixa ao PeerConnection antes de iniciar a captura dos primeiros quadros.
         if (mode == "camera") {
             capturer!!.startCapture(640, 480, 20)
         } else {
@@ -147,9 +152,6 @@ class WebRtcCaptureService : LifecycleService() {
             check(resultCode != 0) { "Autorização de compartilhamento de tela ausente." }
             capturer!!.startCapture(1280, 720, 15)
         }
-        videoTrack = factory!!.createVideoTrack("super-video-$sessionId", videoSource)
-        videoTrack!!.setEnabled(true)
-        peerConnection!!.addTrack(videoTrack, listOf("super-stream-$sessionId"))
         createOffer()
         startSignalPolling()
     }
