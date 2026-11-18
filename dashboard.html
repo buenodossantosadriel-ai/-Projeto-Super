@@ -14,7 +14,7 @@
 <section id="login" class="panel login"><h2>Entrar no dashboard</h2><p>Somente a conta administrativa autorizada pode acessar os dispositivos.</p><label for="email">E-mail</label><input id="email" class="field" type="email" autocomplete="username" placeholder="E-mail do administrador"><label for="password">Senha</label><input id="password" class="field" type="password" autocomplete="current-password" placeholder="Senha"><button id="loginBtn" class="btn">Entrar</button><div id="loginStatus" class="status" role="status">Autenticação necessária.</div></section>
 <section id="dashboard" class="hidden">
 <div class="panel"><div class="devicehead"><div><h2 style="margin:0">Dispositivos</h2><p style="margin:5px 0 0">Os pedidos de câmera ou tela exigem confirmação no próprio Android.</p></div><button id="refreshBtn" class="btn secondary" style="width:auto">Atualizar</button></div><div id="globalStatus" class="status" role="status">Carregando dispositivos...</div></div>
-<div id="devices"></div>
+<div id="pendingDevices"></div><div id="devices"></div>
 <div class="panel"><button id="logoutBtn" class="btn secondary">Sair do dashboard</button><p class="muted">A prévia aparece somente durante uma sessão iniciada e aceita no dispositivo. O painel recebe quadros periódicos, não vídeo contínuo.</p></div>
 </section>
 </main>
@@ -26,7 +26,7 @@ const ENDPOINT=URL+"/functions/v1/projeto-super-controle";
 const ADMIN="elisareisrodrigues05@gmail.com";
 const supabase=createClient(URL,KEY);
 const $=id=>document.getElementById(id);
-let devices=[],refreshTimer=null,frameTimer=null;
+let devices=[],pendingDevices=[],refreshTimer=null,frameTimer=null;
 function message(id,text,error=false){$(id).textContent=text;$(id).style.color=error?"#fca5a5":"#facc15"}
 async function api(body){const {data}=await supabase.auth.getSession();if(!data.session)throw Error("Sessão administrativa encerrada.");const r=await fetch(ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json","apikey":KEY,"Authorization":"Bearer "+data.session.access_token},body:JSON.stringify(body)});const j=await r.json().catch(()=>({}));if(!r.ok||!j.ok)throw Error(j.error||"Falha na comunicação ("+r.status+").");return j}
 function show(isAdmin){$("login").classList.toggle("hidden",isAdmin);$("dashboard").classList.toggle("hidden",!isAdmin);if(isAdmin){loadDevices();if(!refreshTimer)refreshTimer=setInterval(loadDevices,5000);if(!frameTimer)frameTimer=setInterval(loadFrames,1600)}else{if(refreshTimer)clearInterval(refreshTimer);if(frameTimer)clearInterval(frameTimer);refreshTimer=frameTimer=null}}
@@ -38,7 +38,29 @@ $("refreshBtn").addEventListener("click",loadDevices);
 
 function button(label,action,id,kind=""){const b=document.createElement("button");b.className="btn "+kind;b.textContent=label;b.addEventListener("click",async()=>{b.disabled=true;try{await api({action:"request_control",device_id:id,control:action});message("globalStatus","Pedido enviado. Confirme a solicitação no Android.");await loadDevices()}catch(e){message("globalStatus",e.message,true)}finally{b.disabled=false}});return b}
 function render(){const root=$("devices");root.replaceChildren();if(!devices.length){const p=document.createElement("p");p.className="muted";p.textContent="Nenhum dispositivo registrado pelo aplicativo.";root.append(p);return}for(const d of devices){const card=document.createElement("article");card.className="device";const head=document.createElement("div");head.className="devicehead";const name=document.createElement("strong");name.textContent=d.device_name||"Dispositivo Android";const pill=document.createElement("span");pill.className="pill";pill.textContent=d.status==="paired"?"Vinculado":d.status;head.append(name,pill);card.append(head);const seen=document.createElement("p");seen.className="muted";seen.textContent=d.last_seen_at?"Última comunicação: "+new Date(d.last_seen_at).toLocaleString("pt-BR"):"Aguardando comunicação do app.";card.append(seen);if(d.active_session){const s=document.createElement("p");s.className="status";s.textContent="Sessão ativa: "+d.active_session.session_type;card.append(s);const img=document.createElement("img");img.className="preview";img.alt="Prévia mais recente da sessão autorizada";img.dataset.session=d.active_session.id;img.hidden=true;card.append(img);card.append(button("Encerrar sessão","stop_session",d.id,"danger"))}const actions=document.createElement("div");actions.className="actions";actions.append(button("Câmera frontal","camera_front",d.id),button("Câmera traseira","camera_back",d.id),button("Compartilhar tela","screen_share",d.id,"secondary"));card.append(actions);const revoke=document.createElement("button");revoke.className="btn danger";revoke.textContent="Revogar vínculo";revoke.addEventListener("click",async()=>{if(!confirm("Revogar o vínculo deste aparelho?"))return;revoke.disabled=true;try{await api({action:"revoke_device",device_id:d.id});message("globalStatus","Vínculo revogado.");await loadDevices()}catch(e){message("globalStatus",e.message,true)}finally{revoke.disabled=false}});card.append(revoke);root.append(card)}}
-async function loadDevices(){try{const r=await api({action:"list_devices"});devices=r.devices||[];render();message("globalStatus",devices.length+" dispositivo(s) listado(s).")}catch(e){message("globalStatus",e.message,true)}}
+function renderPending(){
+ const root=$("pendingDevices");root.replaceChildren();
+ if(!pendingDevices.length)return;
+ const panel=document.createElement("section");panel.className="panel";
+ const title=document.createElement("h2");title.textContent="Novos dispositivos — aprovação necessária";panel.append(title);
+ const note=document.createElement("p");note.textContent="O aplicativo se registra automaticamente. Aprove somente aparelhos que você reconhece.";panel.append(note);
+ for(const d of pendingDevices){
+  const card=document.createElement("article");card.className="device";
+  const name=document.createElement("strong");name.textContent=d.device_name||"Dispositivo Android";card.append(name);
+  const meta=document.createElement("p");meta.className="muted";meta.textContent="Solicitou cadastro: "+new Date(d.created_at).toLocaleString("pt-BR");card.append(meta);
+  const approve=document.createElement("button");approve.className="btn";approve.textContent="Aprovar e vincular";
+  approve.addEventListener("click",async()=>{approve.disabled=true;try{await api({action:"approve_device",device_id:d.id});message("globalStatus","Dispositivo aprovado e vinculado.");await loadDevices()}catch(e){message("globalStatus",e.message,true)}finally{approve.disabled=false}});
+  card.append(approve);panel.append(card);
+ }
+ root.append(panel);
+}
+async function loadDevices(){
+ try{
+  const [owned,pending]=await Promise.all([api({action:"list_devices"}),api({action:"list_pending_devices"})]);
+  devices=owned.devices||[];pendingDevices=pending.devices||[];renderPending();render();
+  message("globalStatus",devices.length+" vinculado(s) · "+pendingDevices.length+" aguardando aprovação.");
+ }catch(e){message("globalStatus",e.message,true)}
+}
 async function loadFrames(){for(const img of $("devices").querySelectorAll("img[data-session]")){try{const r=await api({action:"latest_frame",session_id:img.dataset.session});if(r.frame?.url){if(img.src!==r.frame.url)img.src=r.frame.url;img.hidden=false}else img.hidden=true}catch{}}}
 supabase.auth.onAuthStateChange((_e,s)=>{if(!s)show(false);else if((s.user.email||"").toLowerCase()===ADMIN)show(true)});
 supabase.auth.getSession().then(({data})=>checkSession(data.session));
