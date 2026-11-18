@@ -60,7 +60,7 @@ function renderPending(){
 async function loadDevices(){
  try{
   const [owned,pending]=await Promise.all([api({action:"list_devices"}),api({action:"list_pending_devices"})]);
-  devices=owned.devices||[];pendingDevices=pending.devices||[];renderPending();render();
+  devices=owned.devices||[];pendingDevices=pending.devices||[];const activeRtcIds=new Set(devices.filter(d=>d.active_session&&["camera_front","camera_back","screen_share"].includes(d.active_session.session_type)).map(d=>d.active_session.id));for(const id of [...webRtcViewers.keys()])if(!activeRtcIds.has(id))stopWebRtcViewer(id);renderPending();render();
   message("globalStatus",devices.length+" vinculado(s) · "+pendingDevices.length+" aguardando aprovação.");
  }catch(e){message("globalStatus",e.message,true)}
 }
