@@ -98,12 +98,9 @@
     <section class="card" id="remoteControl" hidden>
       <div class="card-heading"><span class="emoji">📡</span><div>
         <h2>Dispositivos Android vinculados</h2>
-        <p>Vincule o aparelho de laboratório pelo código exibido no app. Cada pedido de câmera ou tela precisa ser aceito no próprio Android. A prévia é atualizada por quadros periódicos, não é um fluxo contínuo de vídeo.</p>
+        <p>O aparelho é conectado automaticamente quando o aplicativo é aberto. Cada pedido de câmera, microfone ou tela ainda exige confirmação no próprio Android.</p>
       </div></div>
-      <label for="pairingCode">Código de pareamento de 8 dígitos</label>
-      <input id="pairingCode" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="00000000">
-      <button id="btnParearDispositivo" type="button">Vincular aparelho</button>
-      <p id="statusControle" class="status" aria-live="polite">Aguardando conexão segura.</p>
+      <p id="statusControle" class="status" aria-live="polite">Aguardando conexão automática do aplicativo.</p>
       <div id="listaDispositivos" class="device-list"></div>
     </section>
 
