@@ -36,7 +36,7 @@ class ScreenCaptureService : LifecycleService() {
         const val EXTRA_RESULT_CODE = "projection_result_code"
         const val EXTRA_RESULT_DATA = "projection_result_data"
         private const val CHANNEL_ID = "projeto_super_screen"
-        private const val NOTIFICATION_ID = 4103
+        private const val NOTIFICATION_ID = 4102
     }
 
     private var sessionId = ""
@@ -68,7 +68,7 @@ class ScreenCaptureService : LifecycleService() {
         }
         createNotificationChannel()
         val stopPending = PendingIntent.getService(
-            this, 4104, Intent(this, ScreenCaptureService::class.java).setAction(ACTION_STOP),
+            this, 4105, Intent(this, ScreenCaptureService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
