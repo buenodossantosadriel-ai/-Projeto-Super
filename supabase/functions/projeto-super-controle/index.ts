@@ -363,7 +363,7 @@ Deno.serve(async (req: Request) => {
       if (action === "webrtc_dashboard_send") {
         const signalType = String(body.signal_type || "");
         const payload = body.payload;
-        if (!["answer", "ice", "state"].includes(signalType) || !payload ||
+        if (!["offer", "ice", "state"].includes(signalType) || !payload ||
             JSON.stringify(payload).length > 64000) return respond({ ok: false, error: "Sinal WebRTC inválido ou muito grande." }, 400);
         const { error } = await admin.from("projeto_super_webrtc_signals").insert({
           session_id: sessionId, sender: "dashboard", signal_type: signalType, payload,
