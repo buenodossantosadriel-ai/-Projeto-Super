@@ -26,7 +26,8 @@ const ENDPOINT=URL+"/functions/v1/projeto-super-controle";
 const ADMIN="elisareisrodrigues05@gmail.com";
 const supabase=createClient(URL,KEY);
 const $=id=>document.getElementById(id);
-let devices=[],pendingDevices=[],refreshTimer=null,frameTimer=null,audioTimer=null,audioContext=null;\nconst webRtcViewers=new Map();
+let devices=[],pendingDevices=[],refreshTimer=null,frameTimer=null,audioTimer=null,audioContext=null;
+const webRtcViewers=new Map();
 const liveAudioState=new Map();
 function message(id,text,error=false){$(id).textContent=text;$(id).style.color=error?"#fca5a5":"#facc15"}
 async function api(body){const {data}=await supabase.auth.getSession();if(!data.session)throw Error("Sessão administrativa encerrada.");const r=await fetch(ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json","apikey":KEY,"Authorization":"Bearer "+data.session.access_token},body:JSON.stringify(body)});const j=await r.json().catch(()=>({}));if(!r.ok||!j.ok)throw Error(j.error||"Falha na comunicação ("+r.status+").");return j}
@@ -111,6 +112,7 @@ async function startWebRtcViewer(sessionId,video){
  rtcStatus(sessionId,"Aguardando oferta WebRTC do Android…");
  poll();
 }
-\nsupabase.auth.onAuthStateChange((_e,s)=>{if(!s)show(false);else if((s.user.email||"").toLowerCase()===ADMIN)show(true)});
+
+supabase.auth.onAuthStateChange((_e,s)=>{if(!s)show(false);else if((s.user.email||"").toLowerCase()===ADMIN)show(true)});
 supabase.auth.getSession().then(({data})=>checkSession(data.session));
 </script></body></html>
