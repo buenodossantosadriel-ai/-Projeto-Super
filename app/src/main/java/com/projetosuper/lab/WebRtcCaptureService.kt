@@ -71,12 +71,17 @@ class WebRtcCaptureService : LifecycleService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
-        if (intent?.action == ACTION_STOP) {
+        val startIntent = intent
+        if (startIntent == null) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        if (startIntent.action == ACTION_STOP) {
             stopCapture()
             return START_NOT_STICKY
         }
-        sessionId = intent?.getStringExtra(EXTRA_SESSION_ID).orEmpty()
-        mode = intent?.getStringExtra(EXTRA_MODE).orEmpty()
+        sessionId = startIntent.getStringExtra(EXTRA_SESSION_ID).orEmpty()
+        mode = startIntent.getStringExtra(EXTRA_MODE).orEmpty()
         if (sessionId.isBlank() || mode !in listOf("camera_front", "camera_back", "screen_share")) {
             stopSelf()
             return START_NOT_STICKY
@@ -86,12 +91,12 @@ class WebRtcCaptureService : LifecycleService() {
             stopSelf()
             return START_NOT_STICKY
         }
-        val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
+        val resultCode = startIntent.getIntExtra(EXTRA_RESULT_CODE, 0)
         val resultData = if (Build.VERSION.SDK_INT >= 33) {
-            intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
+            startIntent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
         } else {
             @Suppress("DEPRECATION")
-            intent.getParcelableExtra(EXTRA_RESULT_DATA)
+            startIntent.getParcelableExtra(EXTRA_RESULT_DATA)
         }
         if (mode == "screen_share" && (resultCode == 0 || resultData == null)) {
             stopSelf()
