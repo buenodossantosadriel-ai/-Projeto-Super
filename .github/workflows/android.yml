@@ -35,6 +35,18 @@ jobs:
       - name: Compilar APK
         run: gradle assembleDebug
 
+      - name: Validar JavaScript do dashboard
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          html = Path("dashboard.html").read_text(encoding="utf-8")
+          start_tag = '<script type="module">'
+          start = html.index(start_tag) + len(start_tag)
+          end = html.index('</script>', start)
+          Path('/tmp/dashboard.mjs').write_text(html[start:end], encoding="utf-8")
+          PY
+          node --check /tmp/dashboard.mjs
+
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
