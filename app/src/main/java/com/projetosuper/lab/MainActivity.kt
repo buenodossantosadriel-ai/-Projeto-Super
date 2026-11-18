@@ -44,6 +44,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import com.google.firebase.messaging.FirebaseMessaging
 
 data class LaunchableApp(val label: String, val packageName: String)
 
@@ -148,6 +149,14 @@ class MainActivity : ComponentActivity() {
                     val credentials = ControlApi.ensureRegistered(context)
                     deviceId.value = credentials.deviceId
                     deviceStatus.value = "Dispositivo registrado. Aguardando aprovação no painel administrativo."
+                    FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
+                        if (token.isNotBlank()) {
+                            scope.launch {
+                                try { ControlApi.registerFcmToken(context, token) }
+                                catch (error: Exception) { deviceError.value = error.message ?: "Não foi possível registrar as notificações." }
+                            }
+                        }
+                    }
                 } catch (error: Exception) {
                     deviceError.value = error.message ?: "Falha ao registrar o dispositivo."
                     deviceStatus.value = "Não foi possível conectar ao servidor."
