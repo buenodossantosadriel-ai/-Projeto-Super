@@ -75,24 +75,39 @@ async function startWebRtcViewer(sessionId,video){
  if(!sessionId||!video||webRtcViewers.has(sessionId))return;
  if(!window.RTCPeerConnection){rtcStatus(sessionId,"Este navegador não oferece suporte a WebRTC.",true);return}
  const pc=new RTCPeerConnection({iceServers:[]});
- const state={pc,video,afterId:0,closed:false,remoteReady:false,pendingCandidates:[],timer:null,polling:false,answering:false};
+ const state={pc,video,afterId:0,closed:false,remoteReady:false,pendingCandidates:[],timer:null,polling:false,answering:false,receivedTrack:false};
  webRtcViewers.set(sessionId,state);
- pc.ontrack=event=>{const stream=event.streams?.[0]||new MediaStream([event.track]);video.srcObject=stream;video.play().catch(()=>{});rtcStatus(sessionId,"Vídeo recebido pelo WebRTC.")};
+ video.autoplay=true;video.playsInline=true;video.muted=true;
+ pc.ontrack=async event=>{
+  state.receivedTrack=true;
+  let stream=event.streams&&event.streams[0];
+  if(!stream){stream=video.srcObject instanceof MediaStream?video.srcObject:new MediaStream();if(!stream.getTracks().some(t=>t.id===event.track.id))stream.addTrack(event.track)}
+  video.srcObject=stream;
+  rtcStatus(sessionId,"Faixa "+event.track.kind+" recebida; aguardando quadros de vídeo…");
+  try{await video.play()}catch(e){rtcStatus(sessionId,"Faixa recebida, mas o navegador bloqueou a reprodução: "+e.message,true)}
+  event.track.onunmute=()=>rtcStatus(sessionId,"Vídeo ao vivo recebido · faixa ativa.");
+  event.track.onmute=()=>rtcStatus(sessionId,"Faixa de vídeo pausada ou sem quadros.");
+  video.onloadedmetadata=()=>{video.play().catch(e=>rtcStatus(sessionId,"Erro ao reproduzir vídeo: "+e.message,true))};
+  video.onplaying=()=>rtcStatus(sessionId,"Vídeo ao vivo reproduzindo · WebRTC direto.");
+ };
  pc.onicecandidate=event=>{if(event.candidate&&!state.closed)sendRtcSignal(sessionId,"candidate",event.candidate.toJSON()).catch(e=>rtcStatus(sessionId,"Falha ao enviar candidato ICE: "+e.message,true))};
- pc.onconnectionstatechange=()=>{const s=pc.connectionState;if(s==="connected")rtcStatus(sessionId,"Conectado diretamente · WebRTC ativo.");else if(s==="connecting")rtcStatus(sessionId,"Negociando conexão direta…");else if(s==="failed")rtcStatus(sessionId,"Conexão direta falhou. Esta rede pode exigir um relay STUN/TURN, que está desativado.",true);else if(s==="disconnected")rtcStatus(sessionId,"Conexão interrompida; tentando recuperar…");else if(s==="closed")rtcStatus(sessionId,"Conexão encerrada.")};
- pc.oniceconnectionstatechange=()=>{if(pc.iceConnectionState==="failed")rtcStatus(sessionId,"ICE falhou sem STUN/TURN. Verifique a conectividade direta da rede.",true)};
+ pc.onicecandidateerror=event=>rtcStatus(sessionId,"Erro ICE "+(event.errorCode||"")+" · "+(event.errorText||"falha ao obter rota direta"),true);
+ pc.onicegatheringstatechange=()=>{if(pc.iceGatheringState==="complete")rtcStatus(sessionId,"Candidatos ICE locais coletados; verificando rota direta…")};
+ pc.onconnectionstatechange=()=>{const s=pc.connectionState;if(s==="connected")rtcStatus(sessionId,"Conectado diretamente · WebRTC ativo.");else if(s==="connecting")rtcStatus(sessionId,"Negociando conexão direta…");else if(s==="failed")rtcStatus(sessionId,"ICE/DTLS falhou: não existe rota direta entre as redes. Sem STUN/TURN, a rede pode bloquear a conexão.",true);else if(s==="disconnected")rtcStatus(sessionId,"Conexão interrompida; tentando recuperar…");else if(s==="closed")rtcStatus(sessionId,"Conexão encerrada.")};
+ pc.oniceconnectionstatechange=()=>{const s=pc.iceConnectionState;if(s==="checking")rtcStatus(sessionId,"Testando candidatos ICE diretos…");else if(s==="connected"||s==="completed")rtcStatus(sessionId,"Rota ICE direta estabelecida; aguardando quadros de vídeo…");else if(s==="failed")rtcStatus(sessionId,"ICE falhou. Sem STUN/TURN, só é possível conectar se houver rota direta entre os dispositivos.",true);else if(s==="disconnected")rtcStatus(sessionId,"ICE desconectado; tentando recuperar…")};
  const addCandidate=async payload=>{if(!payload?.candidate)return;const candidate=new RTCIceCandidate({candidate:payload.candidate,sdpMid:payload.sdpMid??"0",sdpMLineIndex:payload.sdpMLineIndex??0});if(!state.remoteReady)state.pendingCandidates.push(candidate);else await pc.addIceCandidate(candidate)};
  const applyOffer=async payload=>{
   if(state.answering||pc.remoteDescription||!payload?.sdp)return;
   state.answering=true;
   try{
+   if(!/m=video/i.test(payload.sdp))throw Error("A oferta Android não contém faixa de vídeo (m=video).");
    await pc.setRemoteDescription(new RTCSessionDescription({type:payload.type||"offer",sdp:payload.sdp}));
    state.remoteReady=true;
    for(const candidate of state.pendingCandidates.splice(0))await pc.addIceCandidate(candidate);
    const answer=await pc.createAnswer();
    await pc.setLocalDescription(answer);
    await sendRtcSignal(sessionId,"answer",{type:pc.localDescription.type,sdp:pc.localDescription.sdp});
-   rtcStatus(sessionId,"Oferta recebida. Resposta enviada; aguardando mídia…");
+   rtcStatus(sessionId,"Oferta de vídeo recebida e resposta enviada; aguardando conexão ICE e quadros…");
   }catch(e){rtcStatus(sessionId,"Erro na negociação WebRTC: "+e.message,true);stopWebRtcViewer(sessionId)}
  };
  const poll=async()=>{
@@ -103,7 +118,7 @@ async function startWebRtcViewer(sessionId,video){
    for(const signal of result.signals||[]){
     state.afterId=Math.max(state.afterId,Number(signal.id)||0);
     if(signal.signal_type==="offer")await applyOffer(signal.payload);
-    else if(signal.signal_type==="candidate")await addCandidate(signal.payload);
+    else if(signal.signal_type==="candidate"){try{await addCandidate(signal.payload)}catch(e){rtcStatus(sessionId,"Não foi possível aplicar candidato ICE: "+e.message,true)}}
     else if(signal.signal_type==="hangup"){rtcStatus(sessionId,"O dispositivo encerrou a transmissão.");stopWebRtcViewer(sessionId);return}
    }
   }catch(e){rtcStatus(sessionId,"Sinalização: "+e.message,true)}
