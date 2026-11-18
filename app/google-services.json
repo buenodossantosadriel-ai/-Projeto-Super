@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "519735991579",
+    "project_id": "projeto-super-915c5",
+    "storage_bucket": "projeto-super-915c5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:519735991579:android:2d96e213e408540d6a47be",
+        "android_client_info": {
+          "package_name": "com.projetosuper.lab"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB7dg4TbH3epaq1t4qKga91yr2hmbNmfZQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
