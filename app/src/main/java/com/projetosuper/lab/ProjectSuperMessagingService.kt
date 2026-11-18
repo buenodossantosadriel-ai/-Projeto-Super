@@ -54,7 +54,7 @@ class ProjectSuperMessagingService : FirebaseMessagingService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val notification = NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(applicationInfo.icon)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("Solicitação de autorização")
             .setContentText("Abra o Projeto Super para revisar uma solicitação.")
             .setContentIntent(pendingIntent)
@@ -63,7 +63,7 @@ class ProjectSuperMessagingService : FirebaseMessagingService() {
             .build()
 
         val requestId = message.data["request_id"].orEmpty()
-        val notificationId = requestId.hashCode().takeIf { it != 0 } ?: 915c5
+        val notificationId = requestId.hashCode().takeIf { it != 0 } ?: 9155
         try {
             NotificationManagerCompat.from(this).notify(notificationId, notification)
         } catch (_: SecurityException) {
