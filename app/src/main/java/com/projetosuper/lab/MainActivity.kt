@@ -244,7 +244,6 @@ class MainActivity : ComponentActivity() {
                                 }
                                 if (selected != null) pendingRequest.value = selected
                             }
-                            deviceError.value = null
                         } catch (error: Exception) {
                             deviceError.value = error.message ?: "Falha na conexão."
                         }
