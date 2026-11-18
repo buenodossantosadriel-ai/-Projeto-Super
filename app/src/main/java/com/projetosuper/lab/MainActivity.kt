@@ -1,8 +1,11 @@
 package com.projetosuper.lab
 
 import android.Manifest
+import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -70,8 +73,7 @@ class MainActivity : ComponentActivity() {
             val lifecycleOwner = LocalLifecycleOwner.current
             val scope = rememberCoroutineScope()
             val apps = remember { mutableStateOf(loadLaunchableApps()) }
-            val refreshPermissions = remember { mutableStateOf(0) }
-            val permissionRefreshCount = refreshPermissions.value
+            val permissionRefresh = remember { mutableStateOf(0) }
             val selectedMedia = remember { mutableStateOf<Uri?>(null) }
             val deviceId = remember { mutableStateOf<String?>(null) }
             val devicePaired = remember { mutableStateOf(false) }
@@ -79,6 +81,7 @@ class MainActivity : ComponentActivity() {
             val deviceError = remember { mutableStateOf<String?>(null) }
             val pendingRequest = remember { mutableStateOf<JSONObject?>(null) }
             val pendingScreenRequestId = remember { mutableStateOf<String?>(null) }
+            val busy = remember { mutableStateOf(false) }
 
             val screenCaptureLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.StartActivityForResult()
@@ -87,21 +90,26 @@ class MainActivity : ComponentActivity() {
                 pendingScreenRequestId.value = null
                 if (requestId != null) {
                     scope.launch {
+                        busy.value = true
                         try {
-                            if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
+                            if (result.resultCode == Activity.RESULT_OK && result.data != null) {
                                 val response = ControlApi.decide(context, requestId, true)
+                                val sessionId = response.optString("session_id")
+                                check(sessionId.isNotBlank()) { "O servidor não confirmou a sessão de tela." }
                                 val start = Intent(context, ScreenCaptureService::class.java)
                                     .setAction(ScreenCaptureService.ACTION_START)
-                                    .putExtra(ScreenCaptureService.EXTRA_SESSION_ID, response.optString("session_id"))
+                                    .putExtra(ScreenCaptureService.EXTRA_SESSION_ID, sessionId)
                                     .putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
                                     .putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, result.data)
                                 ContextCompat.startForegroundService(context, start)
                             } else {
                                 ControlApi.decide(context, requestId, false)
-                                deviceError.value = "Compartilhamento de tela não autorizado pelo Android."
+                                deviceError.value = "Compartilhamento de tela recusado no Android."
                             }
                         } catch (error: Exception) {
                             deviceError.value = error.message ?: "Não foi possível iniciar o compartilhamento."
+                        } finally {
+                            busy.value = false
                         }
                     }
                 }
@@ -110,22 +118,20 @@ class MainActivity : ComponentActivity() {
             val permissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestMultiplePermissions()
             ) {
-                context.getSharedPreferences("projeto_super_prefs", MODE_PRIVATE)
+                context.getSharedPreferences("projeto_super_prefs", Context.MODE_PRIVATE)
                     .edit().putBoolean("initial_permissions_requested", true).apply()
-                refreshPermissions.value++
+                permissionRefresh.value++
             }
 
             val photoPicker = rememberLauncherForActivityResult(
                 ActivityResultContracts.PickVisualMedia()
             ) { uri -> selectedMedia.value = uri }
 
-            // SOLICITA CÂMERA + MICROFONE + NOTIFICAÇÃO (se Android 13+) NA PRIMEIRA ABERTURA
             LaunchedEffect(Unit) {
-                val prefs = context.getSharedPreferences("projeto_super_prefs", MODE_PRIVATE)
+                val prefs = context.getSharedPreferences("projeto_super_prefs", Context.MODE_PRIVATE)
                 if (!prefs.getBoolean("initial_permissions_requested", false)) {
                     val requested = mutableListOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
                     if (Build.VERSION.SDK_INT >= 33) requested.add(Manifest.permission.POST_NOTIFICATIONS)
-
                     val missing = requested.distinct().filter {
                         ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
                     }
@@ -156,19 +162,36 @@ class MainActivity : ComponentActivity() {
                             val response = ControlApi.poll(context)
                             devicePaired.value = response.optBoolean("paired")
                             deviceStatus.value = if (devicePaired.value) {
-                                "Dispositivo vinculado. Pedidos serão exibidos aqui e exigem sua confirmação."
+                                "Dispositivo vinculado. Cada pedido remoto exige sua confirmação neste aparelho."
                             } else {
                                 "Dispositivo registrado. Aguardando aprovação no painel administrativo."
                             }
                             val requests = response.optJSONArray("requests")
-                            if (pendingRequest.value == null && requests != null && requests.length() > 0) {
+                            if (pendingRequest.value == null && !busy.value && requests != null) {
+                                var selected: JSONObject? = null
                                 for (i in 0 until requests.length()) {
                                     val candidate = requests.getJSONObject(i)
-                                    if (candidate.optString("action") != "stop_session") {
-                                        pendingRequest.value = candidate
+                                    if (candidate.optString("action") == "stop_session") {
+                                        // Encerrar uma sessão é sempre permitido e não inicia nova captura.
+                                        try {
+                                            ControlApi.decide(context, candidate.optString("id"), true)
+                                            context.startService(Intent(context, CameraCaptureService::class.java).setAction(CameraCaptureService.ACTION_STOP))
+                                            context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
+                                            context.startService(Intent(context, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP))
+                                        } catch (error: Exception) {
+                                            deviceError.value = error.message ?: "Não foi possível encerrar a sessão."
+                                        }
+                                        break
+                                    }
+                                    if (candidate.optString("action") in listOf(
+                                            "camera_front", "camera_back", "screen_share",
+                                            "microphone_live", "microphone_record"
+                                        )) {
+                                        selected = candidate
                                         break
                                     }
                                 }
+                                if (selected != null) pendingRequest.value = selected
                             }
                             deviceError.value = null
                         } catch (error: Exception) {
@@ -179,12 +202,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            fun granted(permission: String): Boolean =
-                ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
-
-            val cameraGranted = granted(Manifest.permission.CAMERA)
-            val microphoneGranted = granted(Manifest.permission.RECORD_AUDIO)
-            val notificationsGranted = Build.VERSION.SDK_INT < 33 || granted(Manifest.permission.POST_NOTIFICATIONS)
+            val cameraGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+            val microphoneGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+            val notificationsGranted = Build.VERSION.SDK_INT < 33 ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
             MaterialTheme {
                 Surface(Modifier.fillMaxSize()) {
@@ -196,8 +217,8 @@ class MainActivity : ComponentActivity() {
                             Text("Projeto Super", style = MaterialTheme.typography.headlineMedium)
                             Text("Laboratório Android — controle transparente")
                             Text(
-                                "Permissões de câmera, microfone e notificação solicitadas na primeira abertura. " +
-                                    "Compartilhamento de tela terá confirmação nativa do sistema quando solicitado."
+                                "Nenhuma câmera, gravação de áudio ou tela é iniciada sem uma solicitação visível e sua confirmação. " +
+                                    "O compartilhamento de tela também exige a autorização nativa do Android."
                             )
                         }
                         item {
@@ -205,19 +226,13 @@ class MainActivity : ComponentActivity() {
                             Text(deviceStatus.value)
                             Text(
                                 if (devicePaired.value) "Este aparelho está vinculado à conta administrativa."
-                                else "O administrador precisa aprovar este aparelho no dashboard. Nenhum código é necessário."
+                                else "O administrador precisa aprovar este aparelho no dashboard. Nenhum código de pareamento é necessário."
                             )
                             Button(
                                 onClick = {
-                                    context.startService(
-                                        Intent(context, CameraCaptureService::class.java).setAction(CameraCaptureService.ACTION_STOP)
-                                    )
-                                    context.startService(
-                                        Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP)
-                                    )
-                                    context.startService(
-                                        Intent(context, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP)
-                                    )
+                                    context.startService(Intent(context, CameraCaptureService::class.java).setAction(CameraCaptureService.ACTION_STOP))
+                                    context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
+                                    context.startService(Intent(context, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP))
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Encerrar qualquer sessão neste aparelho") }
@@ -225,7 +240,7 @@ class MainActivity : ComponentActivity() {
                         }
                         item {
                             Text("Permissões do aparelho", style = MaterialTheme.typography.titleLarge)
-                            Text("Verificação: $permissionRefreshCount", style = MaterialTheme.typography.labelSmall)
+                            Text("Verificação: ${permissionRefresh.value}", style = MaterialTheme.typography.labelSmall)
                             PermissionRow("Câmera", cameraGranted)
                             PermissionRow("Microfone", microphoneGranted)
                             PermissionRow("Notificações", notificationsGranted)
@@ -240,7 +255,7 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Abrir configurações de permissões") }
                             Text(
-                                "Se uma permissão for negada ou revogada, altere‑a manualmente nas configurações do Android.",
+                                "Se uma permissão for negada ou revogada, altere-a manualmente nas configurações do Android.",
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Button(
@@ -263,5 +278,119 @@ class MainActivity : ComponentActivity() {
                                 onClick = { apps.value = loadLaunchableApps() },
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Atualizar lista") }
-                            Text("Aplicativos encontrados:
-                                 
+                            Text("Aplicativos encontrados: ${apps.value.size}")
+                        }
+                        items(apps.value, key = { it.packageName }) { app ->
+                            Card(Modifier.fillMaxWidth()) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(app.label, style = MaterialTheme.typography.bodyLarge)
+                                        Text(app.packageName, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    TextButton(onClick = { openApp(app.packageName) }) { Text("Abrir") }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                val request = pendingRequest.value
+                if (request != null) {
+                    val action = request.optString("action")
+                    val description = when (action) {
+                        "camera_front" -> "O painel administrativo solicitou acesso à câmera frontal. A câmera ficará ativa enquanto a sessão estiver aberta."
+                        "camera_back" -> "O painel administrativo solicitou acesso à câmera traseira. A câmera ficará ativa enquanto a sessão estiver aberta."
+                        "screen_share" -> "O painel administrativo solicitou compartilhar a tela. Se aceitar aqui, o Android ainda mostrará sua confirmação nativa."
+                        "microphone_live" -> "O painel administrativo solicitou áudio ao vivo pelo microfone. O microfone ficará ativo e haverá uma notificação persistente."
+                        "microphone_record" -> "O painel administrativo solicitou uma gravação de áudio. A gravação só começará após sua confirmação e ficará indicada por notificação."
+                        else -> "O painel administrativo solicitou iniciar uma sessão."
+                    }
+                    AlertDialog(
+                        onDismissRequest = {
+                            if (!busy.value) {
+                                pendingRequest.value = null
+                                scope.launch {
+                                    try { ControlApi.decide(context, request.optString("id"), false) }
+                                    catch (error: Exception) { deviceError.value = error.message ?: "Falha ao recusar solicitação." }
+                                }
+                            }
+                        },
+                        title = { Text("Autorizar solicitação?") },
+                        text = { Text(description) },
+                        confirmButton = {
+                            TextButton(
+                                enabled = !busy.value,
+                                onClick = {
+                                    pendingRequest.value = null
+                                    scope.launch {
+                                        busy.value = true
+                                        try {
+                                            when (action) {
+                                                "screen_share" -> {
+                                                    pendingScreenRequestId.value = request.optString("id")
+                                                    val manager = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                                                    screenCaptureLauncher.launch(manager.createScreenCaptureIntent())
+                                                }
+                                                else -> {
+                                                    val response = ControlApi.decide(context, request.optString("id"), true)
+                                                    val sessionId = response.optString("session_id")
+                                                    check(sessionId.isNotBlank()) { "O servidor não confirmou a sessão." }
+                                                    when (action) {
+                                                        "camera_front", "camera_back" -> {
+                                                            val start = Intent(context, CameraCaptureService::class.java)
+                                                                .setAction(CameraCaptureService.ACTION_START)
+                                                                .putExtra(CameraCaptureService.EXTRA_SESSION_ID, sessionId)
+                                                                .putExtra(CameraCaptureService.EXTRA_LENS, if (action == "camera_front") "front" else "back")
+                                                            ContextCompat.startForegroundService(context, start)
+                                                        }
+                                                        "microphone_live", "microphone_record" -> {
+                                                            val start = Intent(context, AudioCaptureService::class.java)
+                                                                .setAction(AudioCaptureService.ACTION_START)
+                                                                .putExtra(AudioCaptureService.EXTRA_SESSION_ID, sessionId)
+                                                                .putExtra(AudioCaptureService.EXTRA_MODE, if (action == "microphone_record") "recording" else "live")
+                                                            ContextCompat.startForegroundService(context, start)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        } catch (error: Exception) {
+                                            deviceError.value = error.message ?: "Não foi possível iniciar a sessão."
+                                        } finally {
+                                            busy.value = false
+                                        }
+                                    }
+                                }
+                            ) { Text("Aceitar") }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                enabled = !busy.value,
+                                onClick = {
+                                    pendingRequest.value = null
+                                    scope.launch {
+                                        try { ControlApi.decide(context, request.optString("id"), false) }
+                                        catch (error: Exception) { deviceError.value = error.message ?: "Falha ao recusar solicitação." }
+                                    }
+                                }
+                            ) { Text("Recusar") }
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun PermissionRow(label: String, granted: Boolean) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(label)
+        Text(if (granted) "Permitida" else "Não permitida")
+    }
+}
