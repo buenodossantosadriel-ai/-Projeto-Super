@@ -31,6 +31,7 @@ function randomHex(size: number) {
 }
 async function clearSessionFrames(admin: ReturnType<typeof createClient>, sessionIds: string[]) {
   if (!sessionIds.length) return;
+  await admin.from("projeto_super_webrtc_signals").delete().in("session_id", sessionIds);
   const { data: frames } = await admin.from("projeto_super_live_frames")
     .select("id,storage_path").in("session_id", sessionIds);
   if (frames?.length) {
@@ -260,6 +261,7 @@ Deno.serve(async (req: Request) => {
         if (error || !data) return respond({ ok: false, error: "Não foi possível registrar o sinal WebRTC." }, 500);
         return respond({ ok: true, signal_id: data.id });
       }
+      await admin.from("projeto_super_device_sessions").update({ last_frame_at: new Date().toISOString() }).eq("id", sessionId).eq("status", "active");
       const afterId = Number(body.after_id || 0);
       if (!Number.isSafeInteger(afterId) || afterId < 0) return respond({ ok: false, error: "Cursor de sinal inválido." }, 400);
       const { data, error } = await admin.from("projeto_super_webrtc_signals")
