@@ -38,7 +38,7 @@ import org.webrtc.VideoCapturer
 import org.webrtc.VideoSource
 import org.webrtc.VideoTrack
 
-/** Direct WebRTC media. Supabase carries signaling only; no STUN/TURN servers are configured. */
+/** WebRTC media uses Metered STUN/TURN; Supabase carries signaling only. */
 class WebRtcCaptureService : LifecycleService() {
     companion object {
         const val ACTION_START_CAMERA = "com.projetosuper.lab.WEBRTC_CAMERA_START"
@@ -115,16 +115,18 @@ class WebRtcCaptureService : LifecycleService() {
             else ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
         } else 0
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, serviceType)
-        try {
-            startWebRtc(intent)
-        } catch (error: Exception) {
-            android.util.Log.e("ProjetoSuperWebRTC", "Falha ao iniciar WebRTC", error)
-            stopCapture()
+        lifecycleScope.launch {
+            try {
+                startWebRtc(intent)
+            } catch (error: Exception) {
+                android.util.Log.e("ProjetoSuperWebRTC", "Falha ao iniciar WebRTC", error)
+                stopCapture()
+            }
         }
         return START_NOT_STICKY
     }
 
-    private fun startWebRtc(intent: Intent?) {
+    private suspend fun startWebRtc(intent: Intent?) {
         initializeFactory(this)
         eglBase = EglBase.create()
         val eglContext = eglBase!!.eglBaseContext
@@ -132,7 +134,24 @@ class WebRtcCaptureService : LifecycleService() {
             .setVideoEncoderFactory(DefaultVideoEncoderFactory(eglContext, true, true))
             .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglContext))
             .createPeerConnectionFactory()
-        val rtcConfig = PeerConnection.RTCConfiguration(emptyList())
+        val iceConfig = ControlApi.getWebRtcIceServers(this, sessionId)
+        val iceArray = iceConfig.optJSONArray("iceServers")
+            ?: error("O servidor não retornou a lista ICE.")
+        val iceServers = (0 until iceArray.length()).flatMap { index ->
+            val item = iceArray.getJSONObject(index)
+            val urls = item.optJSONArray("urls")
+            val urlList = if (urls != null) {
+                (0 until urls.length()).map { urls.getString(it) }
+            } else listOf(item.getString("urls"))
+            urlList.map { url ->
+                PeerConnection.IceServer.builder(url)
+                    .setUsername(item.optString("username"))
+                    .setPassword(item.optString("credential"))
+                    .createIceServer()
+            }
+        }
+        check(iceServers.isNotEmpty()) { "A lista ICE está vazia." }
+        val rtcConfig = PeerConnection.RTCConfiguration(iceServers)
         rtcConfig.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
         peerConnection = factory!!.createPeerConnection(rtcConfig, peerObserver)
             ?: error("Não foi possível criar PeerConnection.")
