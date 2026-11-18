@@ -125,6 +125,40 @@ class MainActivity : ComponentActivity() {
                 permissionRefresh.value++
             }
 
+            val pendingCameraPermissionRequest = remember { mutableStateOf<JSONObject?>(null) }
+            val cameraPermissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission()
+            ) { granted ->
+                val request = pendingCameraPermissionRequest.value
+                pendingCameraPermissionRequest.value = null
+                if (request != null) {
+                    scope.launch {
+                        busy.value = true
+                        try {
+                            if (!granted) {
+                                ControlApi.decide(context, request.optString("id"), false)
+                                deviceError.value = "Permissão da câmera recusada no Android."
+                            } else {
+                                val response = ControlApi.decide(context, request.optString("id"), true)
+                                val sessionId = response.optString("session_id")
+                                check(sessionId.isNotBlank()) { "O servidor não confirmou a sessão da câmera." }
+                                val start = Intent(context, WebRtcCaptureService::class.java)
+                                    .setAction(WebRtcCaptureService.ACTION_START)
+                                    .putExtra(WebRtcCaptureService.EXTRA_SESSION_ID, sessionId)
+                                    .putExtra(WebRtcCaptureService.EXTRA_MODE, request.optString("action"))
+                                ContextCompat.startForegroundService(context, start)
+                                deviceError.value = null
+                            }
+                        } catch (error: Exception) {
+                            deviceError.value = error.message ?: "Não foi possível iniciar a câmera."
+                        } finally {
+                            busy.value = false
+                            permissionRefresh.value++
+                        }
+                    }
+                }
+            }
+
             val pendingAudioPermissionRequest = remember { mutableStateOf<JSONObject?>(null) }
 
             val audioPermissionLauncher = rememberLauncherForActivityResult(
@@ -403,6 +437,12 @@ class MainActivity : ComponentActivity() {
                                                             audioPermissionLauncher.launch(missing.toTypedArray())
                                                             return@launch
                                                         }
+                                                    }
+                                                    if ((action == "camera_front" || action == "camera_back") &&
+                                                        ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                                                        pendingCameraPermissionRequest.value = request
+                                                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                                        return@launch
                                                     }
                                                     if (action.startsWith("open_app:")) {
                                                         val packageName = action.substringAfter("open_app:")
