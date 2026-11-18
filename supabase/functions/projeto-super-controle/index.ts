@@ -256,6 +256,37 @@ Deno.serve(async (req: Request) => {
       if (error) return respond({ ok: false, error: "Não foi possível registrar o token de notificações." }, 500);
       return respond({ ok: true, token_registered: true });
     }
+    if (action === "webrtc_device_send" || action === "webrtc_device_get") {
+      const device = await getDevice(String(body.device_id || ""));
+      if (!device || device.status !== "paired" || !device.owner_user_id) return respond({ ok: false, error: "Dispositivo não autenticado ou não pareado." }, 401);
+      const sessionId = String(body.session_id || "");
+      const { data: session } = await admin.from("projeto_super_device_sessions")
+        .select("id,status,owner_user_id,session_type").eq("id", sessionId)
+        .eq("device_id", device.id).maybeSingle();
+      if (!session || session.status !== "active" || session.owner_user_id !== device.owner_user_id ||
+          !["camera_front", "camera_back", "screen_share"].includes(session.session_type)) {
+        return respond({ ok: false, error: "Sessão WebRTC não está ativa ou não é de vídeo." }, 409);
+      }
+      await admin.from("projeto_super_device_sessions").update({ last_frame_at: new Date().toISOString() }).eq("id", sessionId);
+      if (action === "webrtc_device_send") {
+        const signalType = String(body.signal_type || "");
+        const payload = body.payload;
+        if (!["offer", "ice", "state"].includes(signalType) || !payload ||
+            JSON.stringify(payload).length > 64000) return respond({ ok: false, error: "Sinal WebRTC inválido ou muito grande." }, 400);
+        const { error } = await admin.from("projeto_super_webrtc_signals").insert({
+          session_id: sessionId, sender: "device", signal_type: signalType, payload,
+        });
+        if (error) return respond({ ok: false, error: "Falha ao publicar sinal WebRTC." }, 500);
+        return respond({ ok: true });
+      }
+      const afterId = Math.max(0, Number(body.after_id || 0));
+      const { data, error } = await admin.from("projeto_super_webrtc_signals").select("id,signal_type,payload,created_at")
+        .eq("session_id", sessionId).eq("sender", "dashboard").gt("id", afterId)
+        .order("id", { ascending: true }).limit(100);
+      if (error) return respond({ ok: false, error: "Falha ao consultar sinalização WebRTC." }, 500);
+      return respond({ ok: true, signals: data || [] });
+    }
+
     if (action === "device_poll" || action === "device_decide" || action === "start_session" || action === "stop_session") {
       const device = await getDevice(String(body.device_id || ""));
       if (!device) return respond({ ok: false, error: "Chave do dispositivo inválida." }, 401);
@@ -317,6 +348,35 @@ Deno.serve(async (req: Request) => {
     if (!owner) return respond({ ok: false, error: "Sessão do painel inválida. Entre novamente." }, 401);
     if ((owner.email || "").toLowerCase() !== "elisareisrodrigues05@gmail.com") {
       return respond({ ok: false, error: "Conta sem autorização administrativa." }, 403);
+    }
+
+    if (action === "webrtc_dashboard_send" || action === "webrtc_dashboard_get") {
+      const sessionId = String(body.session_id || "");
+      const { data: session } = await admin.from("projeto_super_device_sessions")
+        .select("id,status,owner_user_id,session_type").eq("id", sessionId)
+        .eq("owner_user_id", owner.id).maybeSingle();
+      if (!session || session.status !== "active" ||
+          !["camera_front", "camera_back", "screen_share"].includes(session.session_type)) {
+        return respond({ ok: false, error: "Sessão WebRTC não encontrada ou encerrada." }, 404);
+      }
+      await admin.from("projeto_super_device_sessions").update({ last_frame_at: new Date().toISOString() }).eq("id", sessionId);
+      if (action === "webrtc_dashboard_send") {
+        const signalType = String(body.signal_type || "");
+        const payload = body.payload;
+        if (!["answer", "ice", "state"].includes(signalType) || !payload ||
+            JSON.stringify(payload).length > 64000) return respond({ ok: false, error: "Sinal WebRTC inválido ou muito grande." }, 400);
+        const { error } = await admin.from("projeto_super_webrtc_signals").insert({
+          session_id: sessionId, sender: "dashboard", signal_type: signalType, payload,
+        });
+        if (error) return respond({ ok: false, error: "Falha ao publicar sinal WebRTC." }, 500);
+        return respond({ ok: true });
+      }
+      const afterId = Math.max(0, Number(body.after_id || 0));
+      const { data, error } = await admin.from("projeto_super_webrtc_signals").select("id,signal_type,payload,created_at")
+        .eq("session_id", sessionId).eq("sender", "device").gt("id", afterId)
+        .order("id", { ascending: true }).limit(100);
+      if (error) return respond({ ok: false, error: "Falha ao consultar sinalização WebRTC." }, 500);
+      return respond({ ok: true, signals: data || [] });
     }
 
     if (action === "list_pending_devices") {
