@@ -119,19 +119,11 @@ class MainActivity : ComponentActivity() {
                 ActivityResultContracts.PickVisualMedia()
             ) { uri -> selectedMedia.value = uri }
 
-            // Solicita somente permissões ainda não concedidas, uma única vez por instalação.
-            // A confirmação é gravada após o retorno do diálogo do Android.
+            // SOLICITA SOMENTE PERMISSÃO DE CÂMERA NA PRIMEIRA ABERTURA
             LaunchedEffect(Unit) {
                 val prefs = context.getSharedPreferences("projeto_super_prefs", MODE_PRIVATE)
                 if (!prefs.getBoolean("initial_permissions_requested", false)) {
-                    val requested = mutableListOf(
-                        Manifest.permission.CAMERA,
-                        Manifest.permission.RECORD_AUDIO,
-                        Manifest.permission.ACCESS_FINE_LOCATION,
-                        Manifest.permission.ACCESS_COARSE_LOCATION
-                    )
-                    if (Build.VERSION.SDK_INT >= 33) requested.add(Manifest.permission.POST_NOTIFICATIONS)
-
+                    val requested = mutableListOf(Manifest.permission.CAMERA)
                     val missing = requested.distinct().filter {
                         ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
                     }
@@ -189,11 +181,6 @@ class MainActivity : ComponentActivity() {
                 ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
             val cameraGranted = granted(Manifest.permission.CAMERA)
-            val microphoneGranted = granted(Manifest.permission.RECORD_AUDIO)
-            val locationGranted = granted(Manifest.permission.ACCESS_FINE_LOCATION) ||
-                granted(Manifest.permission.ACCESS_COARSE_LOCATION)
-            val notificationsGranted = Build.VERSION.SDK_INT < 33 ||
-                granted(Manifest.permission.POST_NOTIFICATIONS)
 
             MaterialTheme {
                 Surface(Modifier.fillMaxSize()) {
@@ -205,8 +192,7 @@ class MainActivity : ComponentActivity() {
                             Text("Projeto Super", style = MaterialTheme.typography.headlineMedium)
                             Text("Laboratório Android — controle transparente")
                             Text(
-                                "Permissões são solicitadas na primeira abertura. Conceder acesso não inicia captura. " +
-                                    "Toda sessão exige confirmação neste aparelho e mantém notificação visível."
+                                "Permissão de câmera solicitada na primeira abertura. Demais recursos solicitados apenas quando for usados."
                             )
                         }
                         item {
@@ -236,9 +222,6 @@ class MainActivity : ComponentActivity() {
                             Text("Permissões do aparelho", style = MaterialTheme.typography.titleLarge)
                             Text("Verificação: $permissionRefreshCount", style = MaterialTheme.typography.labelSmall)
                             PermissionRow("Câmera", cameraGranted)
-                            PermissionRow("Microfone", microphoneGranted)
-                            PermissionRow("Localização", locationGranted)
-                            PermissionRow("Notificações", notificationsGranted)
                             Button(
                                 onClick = {
                                     val settingsIntent = Intent(
@@ -250,7 +233,7 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Abrir configurações de permissões") }
                             Text(
-                                "Se uma permissão for negada ou revogada, altere-a manualmente nas configurações do Android.",
+                                "Se a permissão for negada ou revogada, altere‑a manualmente nas configurações do Android.",
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Button(
@@ -282,118 +265,4 @@ class MainActivity : ComponentActivity() {
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Column(Modifier.weight(1f)) {
-                                        Text(app.label, style = MaterialTheme.typography.titleMedium)
-                                        Text(app.packageName, style = MaterialTheme.typography.bodySmall)
-                                    }
-                                    Button(onClick = { openApp(app.packageName) }) { Text("Abrir") }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            pendingRequest.value?.let { request ->
-                val requestId = request.optString("id")
-                val action = request.optString("action")
-                val description = when (action) {
-                    "camera_front" -> "O endpoint está solicitando uma sessão com a câmera frontal."
-                    "camera_back" -> "O endpoint está solicitando uma sessão com a câmera traseira."
-                    "screen_share" -> "O endpoint está solicitando compartilhamento da tela."
-                    "microphone_live" -> "O endpoint está solicitando acesso ao microfone para ouvir áudio ao vivo."
-                    "microphone_record" -> "O endpoint está solicitando iniciar uma gravação de áudio."
-                    "stop_session" -> "O endpoint está solicitando o encerramento da sessão ativa."
-                    else -> "O endpoint enviou uma solicitação."
-                }
-                AlertDialog(
-                    onDismissRequest = { },
-                    title = { Text("Solicitação do endpoint") },
-                    text = { Text("$description\n\nNada será iniciado sem sua confirmação neste aparelho.") },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            scope.launch {
-                                try {
-                                    if (action == "screen_share") {
-                                        if (!notificationsGranted) {
-                                            ControlApi.decide(context, requestId, false)
-                                            deviceError.value = "Ative as notificações nas configurações para manter o indicador da sessão visível."
-                                        } else {
-                                            pendingScreenRequestId.value = requestId
-                                            val manager = context.getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
-                                        screenCaptureLauncher.launch(manager.createScreenCaptureIntent())
-                                        }
-                                    } else if (action == "camera_front" || action == "camera_back") {
-                                        if (!notificationsGranted) {
-                                            ControlApi.decide(context, requestId, false)
-                                            deviceError.value = "Ative as notificações para manter o indicador da sessão visível."
-                                        } else if (!granted(Manifest.permission.CAMERA)) {
-                                            ControlApi.decide(context, requestId, false)
-                                            deviceError.value = "Permissão da câmera não concedida nas configurações do Android."
-                                        } else {
-                                            val result = ControlApi.decide(context, requestId, true)
-                                            val start = Intent(context, CameraCaptureService::class.java)
-                                                .setAction(CameraCaptureService.ACTION_START)
-                                                .putExtra(CameraCaptureService.EXTRA_SESSION_ID, result.optString("session_id"))
-                                                .putExtra(CameraCaptureService.EXTRA_LENS, if (action == "camera_front") "front" else "back")
-                                            ContextCompat.startForegroundService(context, start)
-                                        }
-                                    } else if (action == "microphone_live" || action == "microphone_record") {
-                                        if (!notificationsGranted) {
-                                            ControlApi.decide(context, requestId, false)
-                                            deviceError.value = "Ative as notificações para manter o indicador do microfone visível."
-                                        } else if (!granted(Manifest.permission.RECORD_AUDIO)) {
-                                            ControlApi.decide(context, requestId, false)
-                                            deviceError.value = "Permissão do microfone não concedida nas configurações do Android."
-                                        } else {
-                                            val result = ControlApi.decide(context, requestId, true)
-                                            val start = Intent(context, AudioCaptureService::class.java)
-                                                .setAction(AudioCaptureService.ACTION_START)
-                                                .putExtra(AudioCaptureService.EXTRA_SESSION_ID, result.optString("session_id"))
-                                                .putExtra(AudioCaptureService.EXTRA_MODE, if (action == "microphone_live") "live" else "recording")
-                                            ContextCompat.startForegroundService(context, start)
-                                        }
-                                    } else if (action == "stop_session") {
-                                        ControlApi.decide(context, requestId, true)
-                                        context.startService(
-                                            Intent(context, CameraCaptureService::class.java).setAction(CameraCaptureService.ACTION_STOP)
-                                        )
-                                        context.startService(
-                                            Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP)
-                                        )
-                                        context.startService(
-                                            Intent(context, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP)
-                                        )
-                                    }
-                                } catch (error: Exception) {
-                                    deviceError.value = error.message ?: "Não foi possível processar a solicitação."
-                                } finally {
-                                    pendingRequest.value = null
-                                }
-                            }
-                        }) { Text(if (action == "stop_session") "Encerrar sessão" else "Aceitar") }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = {
-                            scope.launch {
-                                try { ControlApi.decide(context, requestId, false) }
-                                catch (error: Exception) { deviceError.value = error.message }
-                                pendingRequest.value = null
-                            }
-                        }) { Text("Recusar") }
-                    }
-                )
-            }
-        }
-    }
-}
-
-@androidx.compose.runtime.Composable
-private fun PermissionRow(label: String, granted: Boolean) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(label)
-        Text(if (granted) "Concedida" else "Não concedida")
-    }
-}
+                                        Text(app.label, style = MaterialTheme.typ
