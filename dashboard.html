@@ -15,7 +15,7 @@
 <section id="dashboard" class="hidden">
 <div class="panel"><div class="devicehead"><div><h2 style="margin:0">Dispositivos</h2><p style="margin:5px 0 0">Os pedidos de câmera ou tela exigem confirmação no próprio Android.</p></div><button id="refreshBtn" class="btn secondary" style="width:auto">Atualizar</button></div><div id="globalStatus" class="status" role="status">Carregando dispositivos...</div></div>
 <div id="pendingDevices"></div><div id="devices"></div>
-<div class="panel"><button id="logoutBtn" class="btn secondary">Sair do dashboard</button><p class="muted">O vídeo é recebido por WebRTC direto. O Supabase transporta somente a sinalização; não há STUN nem TURN.</p></div>
+<div class="panel"><button id="logoutBtn" class="btn secondary">Sair do dashboard</button><p class="muted">O vídeo usa WebRTC com STUN/TURN Metered. O Supabase transporta somente a sinalização; a mídia é transmitida diretamente ou por relay TURN quando necessário.</p></div>
 </section>
 </main>
 <script type="module">
@@ -74,7 +74,12 @@ function stopWebRtcViewer(sessionId){const state=webRtcViewers.get(sessionId);if
 async function startWebRtcViewer(sessionId,video){
  if(!sessionId||!video||webRtcViewers.has(sessionId))return;
  if(!window.RTCPeerConnection){rtcStatus(sessionId,"Este navegador não oferece suporte a WebRTC.",true);return}
- const pc=new RTCPeerConnection({iceServers:[]});
+ let iceConfig;
+ try{
+  iceConfig=await api({action:"webrtc_ice_config",session_id:sessionId});
+  if(!Array.isArray(iceConfig.iceServers)||!iceConfig.iceServers.length)throw Error("A lista ICE retornada está vazia.");
+ }catch(e){rtcStatus(sessionId,"Não foi possível carregar STUN/TURN: "+e.message,true);return}
+ const pc=new RTCPeerConnection({iceServers:iceConfig.iceServers});
  const state={pc,video,afterId:0,closed:false,remoteReady:false,pendingCandidates:[],timer:null,polling:false,answering:false,receivedTrack:false};
  webRtcViewers.set(sessionId,state);
  video.autoplay=true;video.playsInline=true;video.muted=true;
