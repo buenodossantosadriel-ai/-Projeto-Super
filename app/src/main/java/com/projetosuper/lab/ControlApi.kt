@@ -236,4 +236,33 @@ object ControlApi {
             connection.disconnect()
         }
     }
+
+    suspend fun sendWebRtcSignal(
+        context: Context,
+        sessionId: String,
+        signalType: String,
+        payload: JSONObject
+    ): JSONObject = withContext(Dispatchers.IO) {
+        require(signalType in listOf("answer", "ice", "state"))
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo não registrado.")
+        val secret = loadSecret(prefs) ?: throw IllegalStateException("Chave local indisponível.")
+        request(
+            JSONObject().put("action", "webrtc_device_send").put("device_id", id)
+                .put("session_id", sessionId).put("signal_type", signalType).put("payload", payload),
+            secret
+        )
+    }
+
+    suspend fun getWebRtcSignals(context: Context, sessionId: String, afterId: Long): JSONObject =
+        withContext(Dispatchers.IO) {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo não registrado.")
+            val secret = loadSecret(prefs) ?: throw IllegalStateException("Chave local indisponível.")
+            request(
+                JSONObject().put("action", "webrtc_device_get").put("device_id", id)
+                    .put("session_id", sessionId).put("after_id", afterId),
+                secret
+            )
+        }
 }
