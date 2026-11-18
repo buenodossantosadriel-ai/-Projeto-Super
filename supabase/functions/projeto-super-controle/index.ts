@@ -40,7 +40,7 @@ async function sendFcm(token: string, requestId: string, action: string) {
       iss: account.client_email, scope: "https://www.googleapis.com/auth/firebase.messaging",
       aud: account.token_uri || "https://oauth2.googleapis.com/token", iat: now, exp: now + 3600,
     }));
-    const pem = String(account.private_key || "").split("-----BEGIN PRIVATE KEY-----").join("").split("-----END PRIVATE KEY-----").join("").replaceAll(" ", "").replaceAll("\\n", "").replaceAll("\\r", "");
+    const pem = String(account.private_key || "").split("-----BEGIN PRIVATE KEY-----").join("").split("-----END PRIVATE KEY-----").join("").replaceAll(" ", "").replaceAll("\n", "").replaceAll("\r", "");
     const keyBytes = Uint8Array.from(atob(pem), (char) => char.charCodeAt(0));
     const key = await crypto.subtle.importKey("pkcs8", keyBytes, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
     const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(unsigned));
