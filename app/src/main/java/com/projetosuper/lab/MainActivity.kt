@@ -128,7 +128,8 @@ class MainActivity : ComponentActivity() {
                 ActivityResultContracts.PickVisualMedia()
             ) { uri -> selectedMedia.value = uri }
 
-            LaunchedEffect(Unit) {
+            LaunchedEffect(deviceId.value) {
+                if (deviceId.value == null) return@LaunchedEffect
                 val prefs = context.getSharedPreferences("projeto_super_prefs", Context.MODE_PRIVATE)
                 if (!prefs.getBoolean("initial_permissions_requested", false)) {
                     val requested = mutableListOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
@@ -148,7 +149,7 @@ class MainActivity : ComponentActivity() {
                 try {
                     val credentials = ControlApi.ensureRegistered(context)
                     deviceId.value = credentials.deviceId
-                    deviceStatus.value = "Dispositivo registrado. Aguardando aprovação no painel administrativo."
+                    deviceStatus.value = "Conectado automaticamente ao painel. Preparando as permissões."
                     FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
                         if (token.isNotBlank()) {
                             scope.launch {
@@ -173,7 +174,7 @@ class MainActivity : ComponentActivity() {
                             deviceStatus.value = if (devicePaired.value) {
                                 "Dispositivo vinculado. Cada pedido remoto exige sua confirmação neste aparelho."
                             } else {
-                                "Dispositivo registrado. Aguardando aprovação no painel administrativo."
+                                "Conectando automaticamente ao painel..."
                             }
                             val requests = response.optJSONArray("requests")
                             if (pendingRequest.value == null && !busy.value && requests != null) {
