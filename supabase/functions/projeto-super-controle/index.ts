@@ -362,6 +362,19 @@ Deno.serve(async (req: Request) => {
       return respond({ ok: true, chunk: { url: signed.signedUrl, chunk_index: chunk.chunk_index, duration_ms: chunk.duration_ms, created_at: chunk.created_at }, session_status: "active" });
     }
 
+    if (action === "list_audio_recordings") {
+      const deviceId = String(body.device_id || "");
+      const { data: device } = await admin.from("projeto_super_devices").select("id")
+        .eq("id", deviceId).eq("owner_user_id", owner.id).maybeSingle();
+      if (!device) return respond({ ok: false, error: "Dispositivo não encontrado." }, 404);
+      const { data: recordings, error } = await admin.from("projeto_super_device_sessions")
+        .select("id,started_at,stopped_at").eq("device_id", deviceId).eq("owner_user_id", owner.id)
+        .eq("session_type", "microphone_record").eq("status", "stopped")
+        .order("started_at", { ascending: false }).limit(10);
+      if (error) return respond({ ok: false, error: "Falha ao listar gravações." }, 500);
+      return respond({ ok: true, recordings: recordings || [] });
+    }
+
     if (action === "list_audio_recording") {
       const sessionId = String(body.session_id || "");
       const { data: session } = await admin.from("projeto_super_device_sessions")
