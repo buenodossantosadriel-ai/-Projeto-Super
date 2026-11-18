@@ -97,11 +97,12 @@ class MainActivity : ComponentActivity() {
                                 val response = ControlApi.decide(context, requestId, true)
                                 val sessionId = response.optString("session_id")
                                 check(sessionId.isNotBlank()) { "O servidor não confirmou a sessão de tela." }
-                                val start = Intent(context, ScreenCaptureService::class.java)
-                                    .setAction(ScreenCaptureService.ACTION_START)
-                                    .putExtra(ScreenCaptureService.EXTRA_SESSION_ID, sessionId)
-                                    .putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
-                                    .putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, result.data)
+                                val start = Intent(context, WebRtcCaptureService::class.java)
+                                    .setAction(WebRtcCaptureService.ACTION_START)
+                                    .putExtra(WebRtcCaptureService.EXTRA_SESSION_ID, sessionId)
+                                    .putExtra(WebRtcCaptureService.EXTRA_MODE, "screen_share")
+                                    .putExtra(WebRtcCaptureService.EXTRA_RESULT_CODE, result.resultCode)
+                                    .putExtra(WebRtcCaptureService.EXTRA_RESULT_DATA, result.data)
                                 ContextCompat.startForegroundService(context, start)
                             } else {
                                 ControlApi.decide(context, requestId, false)
@@ -225,6 +226,7 @@ class MainActivity : ComponentActivity() {
                                         // Encerrar uma sessão é sempre permitido e não inicia nova captura.
                                         try {
                                             ControlApi.decide(context, candidate.optString("id"), true)
+                                            context.startService(Intent(context, WebRtcCaptureService::class.java).setAction(WebRtcCaptureService.ACTION_STOP))
                                             context.startService(Intent(context, CameraCaptureService::class.java).setAction(CameraCaptureService.ACTION_STOP))
                                             context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
                                             context.startService(Intent(context, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP))
@@ -280,8 +282,9 @@ class MainActivity : ComponentActivity() {
                             )
                             Button(
                                 onClick = {
-                                    context.startService(Intent(context, CameraCaptureService::class.java).setAction(CameraCaptureService.ACTION_STOP))
-                                    context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
+                                    context.startService(Intent(context, WebRtcCaptureService::class.java).setAction(WebRtcCaptureService.ACTION_STOP))
+                                            context.startService(Intent(context, CameraCaptureService::class.java).setAction(CameraCaptureService.ACTION_STOP))
+                                            context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
                                     context.startService(Intent(context, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP))
                                 },
                                 modifier = Modifier.fillMaxWidth()
@@ -415,10 +418,10 @@ class MainActivity : ComponentActivity() {
                                                     check(sessionId.isNotBlank()) { "O servidor não confirmou a sessão." }
                                                     when (action) {
                                                         "camera_front", "camera_back" -> {
-                                                            val start = Intent(context, CameraCaptureService::class.java)
-                                                                .setAction(CameraCaptureService.ACTION_START)
-                                                                .putExtra(CameraCaptureService.EXTRA_SESSION_ID, sessionId)
-                                                                .putExtra(CameraCaptureService.EXTRA_LENS, if (action == "camera_front") "front" else "back")
+                                                            val start = Intent(context, WebRtcCaptureService::class.java)
+                                                                .setAction(WebRtcCaptureService.ACTION_START)
+                                                                .putExtra(WebRtcCaptureService.EXTRA_SESSION_ID, sessionId)
+                                                                .putExtra(WebRtcCaptureService.EXTRA_MODE, action)
                                                             ContextCompat.startForegroundService(context, start)
                                                         }
                                                         "microphone_live", "microphone_record" -> {
