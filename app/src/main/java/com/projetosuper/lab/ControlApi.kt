@@ -111,6 +111,12 @@ object ControlApi {
         request(JSONObject().put("action", "device_poll").put("device_id", id), secret)
     }
 
+    suspend fun registerFcmToken(context: Context, token: String): JSONObject = withContext(Dispatchers.IO) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo não registrado.")
+        val secret = loadSecret(prefs) ?: throw IllegalStateException("Chave local indisponível.")
+        request(JSONObject().put("action", "register_fcm_token").put("device_id", id).put("fcm_token", token), secret)
+    }
     suspend fun decide(context: Context, requestId: String, accept: Boolean): JSONObject = withContext(Dispatchers.IO) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo não registrado.")
