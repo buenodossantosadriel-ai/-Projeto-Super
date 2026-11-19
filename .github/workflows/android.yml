@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - android-native
+      - virtual-display-experiment
 
 permissions:
   contents: read
