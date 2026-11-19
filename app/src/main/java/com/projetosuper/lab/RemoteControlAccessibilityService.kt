@@ -106,7 +106,6 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                 action.startsWith("type_text:") -> {
                     val value = action.substringAfter("type_text:")
                     check(value.isNotBlank() && value.length <= 2000) { "Texto inválido." }
-                    check(rootInActiveWindow != null) { "Nenhuma janela ativa para receber texto." }
                     ControlApi.decide(this, requestId, true)
                     decided = true
                     check(setFocusedText(value)) {
