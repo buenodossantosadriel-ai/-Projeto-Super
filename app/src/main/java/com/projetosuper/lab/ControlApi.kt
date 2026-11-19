@@ -90,13 +90,12 @@ object ControlApi {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val oldId = prefs.getString("device_id", null)
         val oldSecret = loadSecret(prefs)
-        if (!oldId.isNullOrBlank() && !oldSecret.isNullOrBlank()) {
-            return@withContext Credentials(oldId, oldSecret)
-        }
-        val secret = UUID.randomUUID().toString() + UUID.randomUUID().toString()
+        // Revalida o vínculo no servidor a cada inicialização. Isso também migra instalações antigas.
+        val secret = oldSecret ?: (UUID.randomUUID().toString() + UUID.randomUUID().toString())
         val payload = JSONObject()
             .put("action", "register_device")
             .put("device_name", android.os.Build.MODEL ?: "Android de laboratório")
+        if (!oldId.isNullOrBlank()) payload.put("device_id", oldId)
         val result = request(payload, secret)
         val id = result.getString("device_id")
         prefs.edit().putString("device_id", id).putString("device_secret_enc", encryptSecret(secret))
