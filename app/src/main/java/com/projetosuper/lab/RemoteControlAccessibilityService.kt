@@ -2,15 +2,25 @@ package com.projetosuper.lab
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.content.Intent
 import android.graphics.Path
 import android.os.Bundle
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 /**
  * Serviço opt-in. O usuário ativa manualmente nas configurações do Android.
- * A árvore de acessibilidade só é consultada no momento de um comando remoto autorizado;
- * eventos recebidos não são lidos, armazenados ou enviados ao servidor.
+ * Não coleta eventos ou conteúdo em segundo plano. Consulta a árvore da tela apenas
+ * quando recebe um comando de texto autorizado e explícito.
  */
 class RemoteControlAccessibilityService : AccessibilityService() {
     companion object {
@@ -18,21 +28,116 @@ class RemoteControlAccessibilityService : AccessibilityService() {
             private set
     }
 
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         activeInstance = this
+        serviceScope.launch { pollAuthorizedCommands() }
     }
 
     override fun onDestroy() {
         if (activeInstance === this) activeInstance = null
+        serviceScope.cancel()
         super.onDestroy()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Não coleta conteúdo de eventos. A árvore só é acessada sob comando explícito.
+        // Eventos não são lidos nem armazenados.
     }
 
     override fun onInterrupt() = Unit
+
+    private suspend fun pollAuthorizedCommands() {
+        while (serviceScope.isActive) {
+            try {
+                val prefs = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
+                if (prefs.getBoolean("app_control_authorized", false)) {
+                    val response = ControlApi.poll(this)
+                    if (response.optBoolean("paired")) {
+                        val requests = response.optJSONArray("requests")
+                        if (requests != null) {
+                            for (index in 0 until requests.length()) {
+                                val request = requests.optJSONObject(index) ?: continue
+                                val action = request.optString("action")
+                                if (action.startsWith("open_app:") ||
+                                    action.startsWith("tap:") ||
+                                    action.startsWith("type_text:") ||
+                                    action == "remote_back" || action == "remote_home") {
+                                    executeAuthorizedCommand(request)
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                // Falhas transitórias de rede não encerram o serviço.
+            }
+            delay(2500)
+        }
+    }
+
+    private suspend fun executeAuthorizedCommand(request: JSONObject) {
+        val requestId = request.optString("id")
+        val action = request.optString("action")
+        if (requestId.isBlank()) return
+        var decided = false
+        try {
+            when {
+                action.startsWith("open_app:") -> {
+                    val packageName = action.substringAfter("open_app:")
+                    check(packageName != packageNameOfSelf() &&
+                        packageName.matches(Regex("[a-zA-Z0-9_]+(\\.[a-zA-Z0-9_]+)+"))) {
+                        "Pacote de aplicativo inválido."
+                    }
+                    val launcherIntent = Intent(Intent.ACTION_MAIN)
+                        .addCategory(Intent.CATEGORY_LAUNCHER)
+                        .setPackage(packageName)
+                    val info = packageManager.queryIntentActivities(launcherIntent, 0).firstOrNull()?.activityInfo
+                        ?: error("Aplicativo não disponível para abertura.")
+                    ControlApi.decide(this, requestId, true)
+                    decided = true
+                    val launch = Intent(Intent.ACTION_MAIN)
+                        .addCategory(Intent.CATEGORY_LAUNCHER)
+                        .setClassName(info.packageName, info.name)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                    withContext(Dispatchers.Main) { startActivity(launch) }
+                }
+                action.startsWith("type_text:") -> {
+                    val value = action.substringAfter("type_text:")
+                    check(value.isNotBlank() && value.length <= 2000) { "Texto inválido." }
+                    check(rootInActiveWindow != null) { "Nenhuma janela ativa para receber texto." }
+                    ControlApi.decide(this, requestId, true)
+                    decided = true
+                    check(setFocusedText(value)) {
+                        "Toque primeiro no campo de texto da tela compartilhada."
+                    }
+                }
+                action.startsWith("tap:") -> {
+                    val parts = action.split(":")
+                    check(parts.size == 3) { "Coordenadas inválidas." }
+                    val x = parts[1].toIntOrNull() ?: error("Coordenada X inválida.")
+                    val y = parts[2].toIntOrNull() ?: error("Coordenada Y inválida.")
+                    check(x in 0..1000 && y in 0..1000) { "Toque fora dos limites." }
+                    ControlApi.decide(this, requestId, true)
+                    decided = true
+                    check(tapNormalized(x, y)) { "O Android não aceitou o toque." }
+                }
+                action == "remote_back" || action == "remote_home" -> {
+                    ControlApi.decide(this, requestId, true)
+                    decided = true
+                    val ok = if (action == "remote_back") goBack() else goHome()
+                    check(ok) { "O Android não aceitou o comando." }
+                }
+            }
+        } catch (_: Exception) {
+            if (!decided) {
+                try { ControlApi.decide(this, requestId, false) } catch (_: Exception) {}
+            }
+        }
+    }
+
+    private fun packageNameOfSelf(): String = packageName
 
     fun tap(x: Float, y: Float): Boolean {
         val path = Path().apply { moveTo(x, y) }
@@ -43,10 +148,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
     }
 
     fun swipe(x1: Float, y1: Float, x2: Float, y2: Float, durationMs: Long): Boolean {
-        val path = Path().apply {
-            moveTo(x1, y1)
-            lineTo(x2, y2)
-        }
+        val path = Path().apply { moveTo(x1, y1); lineTo(x2, y2) }
         val gesture = GestureDescription.Builder()
             .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs.coerceIn(100, 1500)))
             .build()
