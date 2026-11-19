@@ -142,23 +142,30 @@ class MainActivity : ComponentActivity() {
             val deviceStatus = remember { mutableStateOf("Registrando dispositivo seguro...") }
             val deviceError = remember { mutableStateOf<String?>(null) }
             val pendingRequest = remember { mutableStateOf<JSONObject?>(null) }
-            val pendingScreenRequestId = remember { mutableStateOf<String?>(null) }
+            val pendingScreenRequestId = remember { mutableStateOf<String?>(null) }\n            val pendingInitialDisplaySessionId = remember { mutableStateOf<String?>(null) }
             val busy = remember { mutableStateOf(false) }
 
             val screenCaptureLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.StartActivityForResult()
             ) { result ->
                 val requestId = pendingScreenRequestId.value
+                val initialSessionId = pendingInitialDisplaySessionId.value
                 pendingScreenRequestId.value = null
-                if (requestId != null) {
+                pendingInitialDisplaySessionId.value = null
+                if (requestId != null || initialSessionId != null) {
                     scope.launch {
                         busy.value = true
-                        var createdSessionId: String? = null
+                        var createdSessionId: String? = initialSessionId
                         try {
                             if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-                                val response = ControlApi.decide(context, requestId, true)
-                                val sessionId = response.optString("session_id")
-                                check(sessionId.isNotBlank()) { "O servidor não confirmou a sessão de tela." }
+                                val sessionId = if (initialSessionId != null) {
+                                    initialSessionId
+                                } else {
+                                    val response = ControlApi.decide(context, requestId!!, true)
+                                    response.optString("session_id").also {
+                                        check(it.isNotBlank()) { "O servidor não confirmou a sessão de tela." }
+                                    }
+                                }
                                 createdSessionId = sessionId
                                 val start = Intent(context, ScreenCaptureService::class.java)
                                     .setAction(ScreenCaptureService.ACTION_START)
@@ -166,13 +173,26 @@ class MainActivity : ComponentActivity() {
                                     .putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
                                     .putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, result.data)
                                 ContextCompat.startForegroundService(context, start)
+                                if (initialSessionId != null) {
+                                    appControlAuthorized.value = true
+                                    context.getSharedPreferences("projeto_super_device", Context.MODE_PRIVATE)
+                                        .edit().putBoolean("app_control_authorized", true).apply()
+                                    val discoveredApps = loadLaunchableApps()
+                                    apps.value = discoveredApps
+                                    if (devicePaired.value) {
+                                        ControlApi.syncApps(context, discoveredApps)
+                                        appsSynced.value = true
+                                    }
+                                    deviceError.value = "Autorização geral concedida. Ambiente remoto preparado; o administrador já pode abrir os aplicativos pelo dashboard."
+                                }
                             } else {
-                                ControlApi.decide(context, requestId, false)
-                                deviceError.value = "Captura de tela recusada no Android."
+                                if (requestId != null) ControlApi.decide(context, requestId, false)
+                                if (initialSessionId != null) ControlApi.stopSession(context, initialSessionId)
+                                deviceError.value = "Autorização de captura recusada no Android. O controle remoto permanece desativado."
                             }
                         } catch (error: Exception) {
                             createdSessionId?.let { try { ControlApi.stopSession(context, it) } catch (_: Exception) {} }
-                            deviceError.value = error.message ?: "Não foi possível iniciar a captura de tela."
+                            deviceError.value = error.message ?: "Não foi possível iniciar o ambiente remoto."
                         } finally {
                             busy.value = false
                         }
@@ -370,25 +390,32 @@ class MainActivity : ComponentActivity() {
                                 else "Ainda não autorizada. Nenhum comando remoto de aplicativo será executado.")
                             Button(
                                 onClick = {
-                                    appControlAuthorized.value = true
-                                    context.getSharedPreferences("projeto_super_device", Context.MODE_PRIVATE)
-                                        .edit().putBoolean("app_control_authorized", true).apply()
-                                    appsSynced.value = false
                                     scope.launch {
+                                        busy.value = true
                                         try {
-                                            if (devicePaired.value) {
-                                                ControlApi.syncApps(context, loadLaunchableApps())
-                                                appsSynced.value = true
+                                            check(devicePaired.value) { "Aguarde o vínculo seguro com a conta administrativa." }
+                                            val prefs = context.getSharedPreferences("projeto_super_device", Context.MODE_PRIVATE)
+                                            val existingDisplay = prefs.getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.INVALID_DISPLAY)
+                                            if (appControlAuthorized.value && existingDisplay != android.view.Display.INVALID_DISPLAY) {
+                                                deviceError.value = "Autorização geral ativa e ambiente remoto já preparado."
+                                            } else {
+                                                val session = ControlApi.startRemoteDisplaySession(context)
+                                                val sessionId = session.optString("session_id")
+                                                check(sessionId.isNotBlank()) { "O servidor não criou o ambiente remoto." }
+                                                pendingInitialDisplaySessionId.value = sessionId
+                                                val manager = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                                                screenCaptureLauncher.launch(manager.createScreenCaptureIntent())
                                             }
-                                            deviceError.value = "Autorização geral concedida para os aplicativos identificados."
                                         } catch (error: Exception) {
-                                            deviceError.value = error.message ?: "Autorização salva, mas houve falha ao sincronizar os aplicativos."
+                                            deviceError.value = error.message ?: "Não foi possível iniciar a autorização geral."
+                                        } finally {
+                                            busy.value = false
                                         }
                                     }
                                 },
-                                enabled = !appControlAuthorized.value,
+                                enabled = !appControlAuthorized.value && !busy.value,
                                 modifier = Modifier.fillMaxWidth()
-                            ) { Text(if (appControlAuthorized.value) "Autorização geral ativa" else "Autorizar todos os aplicativos identificados") }
+                            ) { Text(if (appControlAuthorized.value) "Autorização geral ativa" else "Autorizar acesso remoto e preparar ambiente") }
                             Button(
                                 onClick = {
                                     appControlAuthorized.value = false
@@ -400,7 +427,7 @@ class MainActivity : ComponentActivity() {
                                 enabled = appControlAuthorized.value,
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Revogar autorização geral") }
-                            Text("A autorização vale para todos os aplicativos identificados com atividade de inicialização. Acessibilidade precisa ser ativada manualmente no Android para toques e navegação. Esta autorização não libera captura de tela, câmera ou microfone.")
+                            Text("A autorização geral é concedida junto com a preparação inicial do display remoto. O Android exibirá sua confirmação nativa de captura uma vez nessa configuração. Depois disso, o administrador abre os aplicativos pelo dashboard sem confirmações individuais. Acessibilidade ainda precisa ser ativada manualmente nas configurações do Android para toques e digitação. Se o Android encerrar o serviço ou revogar a captura, poderá ser necessário autorizar novamente.")
                         }
                         item {
                             Text("Aplicativos disponíveis", style = MaterialTheme.typography.titleLarge)
