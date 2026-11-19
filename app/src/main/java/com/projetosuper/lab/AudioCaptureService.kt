@@ -19,7 +19,9 @@ import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -163,12 +165,23 @@ class AudioCaptureService : LifecycleService() {
         stopping = true
         try { recorder?.stop() } catch (_: Exception) {}
         if (!remoteAlreadyStopped && sessionId.isNotBlank()) {
-            lifecycleScope.launch(Dispatchers.IO) {
-                try { ControlApi.stopSession(this@AudioCaptureService, sessionId) } catch (_: Exception) {}
+            // lifecycleScope seria cancelado pelo stopSelf antes de confirmar o encerramento remoto.
+            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                try {
+                    ControlApi.stopSession(this@AudioCaptureService, sessionId)
+                } catch (error: Exception) {
+                    android.util.Log.e("ProjetoSuperAudio", "Não foi possível encerrar sessão no servidor: ${error.message}")
+                } finally {
+                    withContext(Dispatchers.Main) {
+                        ServiceCompat.stopForeground(this@AudioCaptureService, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                        stopSelf()
+                    }
+                }
             }
+        } else {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopSelf()
         }
-        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-        stopSelf()
     }
 
     private fun makeWav(pcm: ByteArray, sampleRate: Int, channels: Int, bits: Int): ByteArray {
