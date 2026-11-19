@@ -484,8 +484,11 @@ Deno.serve(async (req: Request) => {
       const validPackage = /^[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)+$/.test(appPackage) && appPackage.length <= 180;
       const isRemoteNavigation = requestedAction === "remote_back" || requestedAction === "remote_home";
       const isTap = /^tap:(?:[0-9]|[1-9][0-9]{1,2}|1000):(?:[0-9]|[1-9][0-9]{1,2}|1000)$/.test(requestedAction);
+      const isTypeText = requestedAction.startsWith("type_text:") &&
+        requestedAction.length > "type_text:".length &&
+        requestedAction.length <= "type_text:".length + 2000;
       if (!["camera_front", "camera_back", "screen_share", "microphone_live", "microphone_record", "stop_session"].includes(requestedAction) &&
-          !(isOpenApp && validPackage) && !isRemoteNavigation && !isTap) {
+          !(isOpenApp && validPackage) && !isRemoteNavigation && !isTap && !isTypeText) {
         return respond({ ok: false, error: "Controle inválido ou pacote de aplicativo inválido." }, 400);
       }
       const { data: device } = await admin.from("projeto_super_devices").select("id,last_seen_at")
@@ -507,7 +510,7 @@ Deno.serve(async (req: Request) => {
       if (requestedAction === "stop_session" && !hasActiveSession) {
         return respond({ ok: false, error: "Não há sessão ativa para encerrar." }, 409);
       }
-      const isRemoteCommand = isRemoteNavigation || isTap;
+      const isRemoteCommand = isRemoteNavigation || isTap || isTypeText;
       if (requestedAction !== "stop_session" && hasActiveSession &&
           !(isRemoteCommand && activeSession?.[0]?.session_type === "screen_share")) {
         return respond({ ok: false, error: "Encerre a sessão atual antes de iniciar outra." }, 409);
