@@ -260,7 +260,6 @@ class MainActivity : ComponentActivity() {
                                         try {
                                             ControlApi.decide(context, candidate.optString("id"), true)
                                             context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
-                                            context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
                                             context.startService(Intent(context, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP))
                                         } catch (error: Exception) {
                                             deviceError.value = error.message ?: "Não foi possível encerrar a sessão."
@@ -334,7 +333,6 @@ class MainActivity : ComponentActivity() {
                             )
                             Button(
                                 onClick = {
-                                    context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
                                     context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
                                     context.startService(Intent(context, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP))
                                 },
