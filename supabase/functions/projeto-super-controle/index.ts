@@ -331,7 +331,7 @@ Deno.serve(async (req: Request) => {
           app_label: String(app?.app_label || "").trim().slice(0, 160),
           updated_at: new Date().toISOString(),
         })).filter((app) =>
-          /^[a-zA-Z0-9_]+(\\.[a-zA-Z0-9_]+)+$/.test(app.package_name) &&
+          /^[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)+$/.test(app.package_name) &&
           app.package_name.length <= 180 && app.app_label.length > 0
         );
         const { error: deleteError } = await admin.from("projeto_super_device_apps")
