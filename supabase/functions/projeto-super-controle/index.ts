@@ -530,13 +530,11 @@ Deno.serve(async (req: Request) => {
       if (requestedAction === "stop_session" && !hasActiveSession) {
         return respond({ ok: false, error: "Não há sessão ativa para encerrar." }, 409);
       }
-      const requiresVisibleScreen = isRemoteNavigation || isTap || isTypeText;
-      if (requiresVisibleScreen && (!hasActiveSession || activeSession?.[0]?.session_type !== "screen_share")) {
-        return respond({ ok: false, error: "Inicie e mantenha o compartilhamento de tela autorizado antes de enviar toques, navegação ou texto remoto." }, 409);
-      }
+      // Controle de aplicativos é independente de transmissão de tela.
+      // O dispositivo ainda precisa estar vinculado, com autorização geral ativa
+      // e AccessibilityService habilitado pelo próprio usuário no Android.
       const isRemoteCommand = isRemoteNavigation || isTap || isTypeText || (isOpenApp && validPackage);
-      if (requestedAction !== "stop_session" && hasActiveSession &&
-          !(isRemoteCommand && activeSession?.[0]?.session_type === "screen_share")) {
+      if (requestedAction !== "stop_session" && hasActiveSession && !isRemoteCommand) {
         return respond({ ok: false, error: "Encerre a sessão atual antes de iniciar outra." }, 409);
       }
       const { data: existing } = await admin.from("projeto_super_control_requests").select("id")
