@@ -151,6 +151,8 @@ class MainActivity : ComponentActivity() {
                 mutableStateOf(context.getSharedPreferences("projeto_super_device", Context.MODE_PRIVATE)
                     .getBoolean("app_control_authorized", false))
             }
+            // A autorização geral é apresentada automaticamente na primeira abertura.
+            val showGeneralAuthorizationDialog = remember { mutableStateOf(!appControlAuthorized.value) }
             val deviceStatus = remember { mutableStateOf("Registrando dispositivo seguro...") }
             val deviceError = remember { mutableStateOf<String?>(null) }
             val pendingRequest = remember { mutableStateOf<JSONObject?>(null) }
@@ -320,8 +322,7 @@ class MainActivity : ComponentActivity() {
                             Text("Projeto Super", style = MaterialTheme.typography.headlineMedium)
                             Text("Laboratório Android — controle transparente")
                             Text(
-                                "O controle remoto dos aplicativos identificados só funciona após autorização geral neste aparelho. " +
-                                    "Captura de tela, câmera e microfone continuam exigindo as permissões específicas do Android."
+                                "A autorização geral habilita controle remoto e captura de tela. O Android mantém as confirmações próprias de acessibilidade e MediaProjection, além das permissões específicas de câmera e microfone."
                             )
                         }
                         item {
@@ -420,7 +421,7 @@ class MainActivity : ComponentActivity() {
                                 enabled = appControlAuthorized.value,
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Revogar autorização geral") }
-                            Text("A autorização vale para todos os aplicativos identificados com atividade de inicialização. Acessibilidade precisa ser ativada manualmente no Android para toques e navegação. Esta autorização não libera captura de tela, câmera ou microfone.")
+                            Text("A autorização geral vale para controle remoto e captura de tela. Acessibilidade e MediaProjection ainda dependem das confirmações nativas exigidas pelo Android. Câmera e microfone continuam sujeitos às permissões específicas do sistema.")
                         }
                         item {
                             Text("Aplicativos disponíveis", style = MaterialTheme.typography.titleLarge)
@@ -459,6 +460,45 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
+                }
+
+                if (showGeneralAuthorizationDialog.value && !appControlAuthorized.value) {
+                    AlertDialog(
+                        onDismissRequest = { showGeneralAuthorizationDialog.value = false },
+                        title = { Text("Autorização geral do Projeto Super") },
+                        text = {
+                            Text(
+                                "Ao autorizar, você habilita conjuntamente o controle remoto dos aplicativos identificados e a captura de tela para exibição no dashboard. " +
+                                    "O Android ainda poderá solicitar confirmações próprias, como ativar a acessibilidade e permitir cada sessão de captura de tela. " +
+                                    "Você pode revogar esta autorização a qualquer momento."
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                appControlAuthorized.value = true
+                                showGeneralAuthorizationDialog.value = false
+                                context.getSharedPreferences("projeto_super_device", Context.MODE_PRIVATE)
+                                    .edit().putBoolean("app_control_authorized", true).apply()
+                                appsSynced.value = false
+                                scope.launch {
+                                    try {
+                                        if (devicePaired.value) {
+                                            ControlApi.syncApps(context, loadLaunchableApps())
+                                            appsSynced.value = true
+                                        }
+                                        deviceError.value = "Autorização geral concedida para controle remoto e captura de tela."
+                                    } catch (error: Exception) {
+                                        deviceError.value = error.message ?: "Autorização salva, mas houve falha ao sincronizar os aplicativos."
+                                    }
+                                }
+                            }) { Text("Autorizar controle e captura") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showGeneralAuthorizationDialog.value = false }) {
+                                Text("Agora não")
+                            }
+                        }
+                    )
                 }
 
                 val request = pendingRequest.value
