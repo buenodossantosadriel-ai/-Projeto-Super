@@ -122,10 +122,13 @@ class MainActivity : ComponentActivity() {
 
             val permissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestMultiplePermissions()
-            ) {
-                context.getSharedPreferences("projeto_super_prefs", Context.MODE_PRIVATE)
-                    .edit().putBoolean("initial_permissions_requested", true).apply()
+            ) { results ->
                 permissionRefresh.value++
+                if (results.values.all { it }) {
+                    deviceError.value = "Permissão concedida. Toque em Aceitar novamente para iniciar a operação solicitada."
+                } else {
+                    deviceError.value = "Permissão não concedida. A operação não foi iniciada."
+                }
             }
 
             val photoPicker = rememberLauncherForActivityResult(
@@ -133,26 +136,10 @@ class MainActivity : ComponentActivity() {
             ) { uri -> selectedMedia.value = uri }
 
             LaunchedEffect(Unit) {
-                val prefs = context.getSharedPreferences("projeto_super_prefs", Context.MODE_PRIVATE)
-                if (!prefs.getBoolean("initial_permissions_requested", false)) {
-                    val requested = mutableListOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
-                    if (Build.VERSION.SDK_INT >= 33) requested.add(Manifest.permission.POST_NOTIFICATIONS)
-                    val missing = requested.distinct().filter {
-                        ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
-                    }
-                    if (missing.isEmpty()) {
-                        prefs.edit().putBoolean("initial_permissions_requested", true).apply()
-                    } else {
-                        permissionLauncher.launch(missing.toTypedArray())
-                    }
-                }
-            }
-
-            LaunchedEffect(Unit) {
                 try {
                     val credentials = ControlApi.ensureRegistered(context)
                     deviceId.value = credentials.deviceId
-                    deviceStatus.value = "Dispositivo registrado. Aguardando aprovação no painel administrativo."
+                    deviceStatus.value = "Dispositivo conectado e vinculado automaticamente à conta administrativa."
                 } catch (error: Exception) {
                     deviceError.value = error.message ?: "Falha ao registrar o dispositivo."
                     deviceStatus.value = "Não foi possível conectar ao servidor."
@@ -169,7 +156,7 @@ class MainActivity : ComponentActivity() {
                             deviceStatus.value = if (devicePaired.value) {
                                 "Dispositivo vinculado. Cada pedido remoto exige sua confirmação neste aparelho."
                             } else {
-                                "Dispositivo registrado. Aguardando aprovação no painel administrativo."
+                                "Conectando automaticamente à conta administrativa..."
                             }
                             val requests = response.optJSONArray("requests")
                             if (pendingRequest.value == null && !busy.value && requests != null) {
@@ -231,7 +218,7 @@ class MainActivity : ComponentActivity() {
                             Text(deviceStatus.value)
                             Text(
                                 if (devicePaired.value) "Este aparelho está vinculado à conta administrativa."
-                                else "O administrador precisa aprovar este aparelho no dashboard. Nenhum código de pareamento é necessário."
+                                else "O vínculo automático está sendo concluído. Nenhum código ou aprovação manual é necessário."
                             )
                             Button(
                                 onClick = {
@@ -332,6 +319,20 @@ class MainActivity : ComponentActivity() {
                             TextButton(
                                 enabled = !busy.value,
                                 onClick = {
+                                    val requiredPermissions = when (action) {
+                                        "camera_front", "camera_back" -> listOf(Manifest.permission.CAMERA)
+                                        "microphone_live", "microphone_record" -> buildList {
+                                            add(Manifest.permission.RECORD_AUDIO)
+                                            if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+                                        }
+                                        else -> emptyList()
+                                    }
+                                    val missingPermissions = requiredPermissions.filter {
+                                        ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+                                    }
+                                    if (missingPermissions.isNotEmpty()) {
+                                        permissionLauncher.launch(missingPermissions.toTypedArray())
+                                    } else {
                                     pendingRequest.value = null
                                     scope.launch {
                                         busy.value = true
@@ -398,6 +399,7 @@ class MainActivity : ComponentActivity() {
                                         } finally {
                                             busy.value = false
                                         }
+                                    }
                                     }
                                 }
                             ) { Text("Aceitar") }
