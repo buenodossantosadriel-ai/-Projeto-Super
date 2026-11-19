@@ -311,7 +311,7 @@ Deno.serve(async (req: Request) => {
       return respond({ ok: true, signals: data || [], next_after_id: data?.length ? data[data.length - 1].id : afterId });
     }
 
-    if (action === "device_poll" || action === "device_sync_apps" || action === "device_decide" || action === "start_session" || action === "stop_session") {
+    if (action === "device_poll" || action === "device_sync_apps" || action === "device_decide" || action === "start_session" || action === "stop_session" || action === "start_remote_display_session") {
       const device = await getDevice(String(body.device_id || ""));
       if (!device) return respond({ ok: false, error: "Chave do dispositivo inválida." }, 401);
       if (action === "device_poll") {
@@ -319,6 +319,20 @@ Deno.serve(async (req: Request) => {
           .eq("device_id", device.id).eq("status", "pending").gt("expires_at", new Date().toISOString())
           .order("created_at", { ascending: true }).limit(10);
         return respond({ ok: true, paired: device.status === "paired", requests: requests || [] });
+      }
+      if (action === "start_remote_display_session") {
+        const { data: existingSession, error: existingError } = await admin.from("projeto_super_device_sessions")
+          .select("id").eq("device_id", device.id).eq("owner_user_id", device.owner_user_id)
+          .eq("session_type", "screen_share").eq("status", "active")
+          .order("started_at", { ascending: false }).limit(1).maybeSingle();
+        if (existingError) return respond({ ok: false, error: "Não foi possível verificar o ambiente remoto existente." }, 500);
+        if (existingSession) return respond({ ok: true, session_id: existingSession.id, reused: true });
+        const { data: session, error } = await admin.from("projeto_super_device_sessions").insert({
+          device_id: device.id, owner_user_id: device.owner_user_id, session_type: "screen_share",
+          local_consent_at: new Date().toISOString(), status: "active",
+        }).select("id").single();
+        if (error || !session) return respond({ ok: false, error: "Não foi possível preparar o ambiente remoto." }, 500);
+        return respond({ ok: true, session_id: session.id, reused: false });
       }
       if (action === "device_sync_apps") {
         if (device.status !== "paired" || !device.owner_user_id) {
