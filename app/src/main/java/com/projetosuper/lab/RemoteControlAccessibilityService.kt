@@ -11,6 +11,20 @@ import android.view.accessibility.AccessibilityEvent
  * A implementação de comandos remotos será conectada ao fluxo autenticado e consentido.
  */
 class RemoteControlAccessibilityService : AccessibilityService() {
+    companion object {
+        @Volatile var activeInstance: RemoteControlAccessibilityService? = null
+            private set
+    }
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        activeInstance = this
+    }
+
+    override fun onDestroy() {
+        if (activeInstance === this) activeInstance = null
+        super.onDestroy()
+    }
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         // Intencionalmente não inspeciona eventos ou conteúdo de aplicativos.
     }
@@ -40,6 +54,14 @@ class RemoteControlAccessibilityService : AccessibilityService() {
             )
             .build()
         return dispatchGesture(gesture, null, null)
+    }
+
+    fun tapNormalized(x: Int, y: Int): Boolean {
+        val metrics = resources.displayMetrics
+        return tap(
+            (x.coerceIn(0, 1000) / 1000f) * metrics.widthPixels,
+            (y.coerceIn(0, 1000) / 1000f) * metrics.heightPixels
+        )
     }
 
     fun goBack(): Boolean = performGlobalAction(GLOBAL_ACTION_BACK)
