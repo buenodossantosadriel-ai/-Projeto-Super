@@ -142,7 +142,8 @@ class MainActivity : ComponentActivity() {
             val deviceStatus = remember { mutableStateOf("Registrando dispositivo seguro...") }
             val deviceError = remember { mutableStateOf<String?>(null) }
             val pendingRequest = remember { mutableStateOf<JSONObject?>(null) }
-            val pendingScreenRequestId = remember { mutableStateOf<String?>(null) }\n            val pendingInitialDisplaySessionId = remember { mutableStateOf<String?>(null) }
+            val pendingScreenRequestId = remember { mutableStateOf<String?>(null) }
+            val pendingInitialDisplaySessionId = remember { mutableStateOf<String?>(null) }
             val busy = remember { mutableStateOf(false) }
 
             val screenCaptureLauncher = rememberLauncherForActivityResult(
