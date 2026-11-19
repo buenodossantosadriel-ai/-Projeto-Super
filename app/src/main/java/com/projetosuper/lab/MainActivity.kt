@@ -560,29 +560,21 @@ class MainActivity : ComponentActivity() {
                                                             "O Android não encontrou uma tela inicial para este aplicativo. Atualize a lista de apps e tente novamente."
                                                         }
                                                         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-                                                        context.startActivity(launchIntent)
+                                                        RemoteDisplayLauncher.start(context, launchIntent)
                                                         ControlApi.decide(context, request.optString("id"), true)
                                                         deviceError.value = null
                                                         return@launch
                                                     }
-                                                    if (action.startsWith("tap:") || action == "remote_back" || action == "remote_home") {
+                                                    if (action.startsWith("tap:")) {
                                                         val service = RemoteControlAccessibilityService.activeInstance
-                                                        check(service != null) {
-                                                            "Ative a acessibilidade do Projeto Super nas configurações do Android."
-                                                        }
-                                                        if (action.startsWith("tap:")) {
-                                                            val parts = action.split(":")
-                                                            check(parts.size == 3) { "Coordenadas inválidas." }
-                                                            val x = parts[1].toIntOrNull() ?: error("Coordenada X inválida.")
-                                                            val y = parts[2].toIntOrNull() ?: error("Coordenada Y inválida.")
-                                                            check(x in 0..1000 && y in 0..1000) { "Toque fora dos limites." }
-                                                            ControlApi.decide(context, request.optString("id"), true)
-                                                            check(service.tapNormalized(x, y)) { "O Android não aceitou o toque." }
-                                                        } else {
-                                                            ControlApi.decide(context, request.optString("id"), true)
-                                                            val ok = if (action == "remote_back") service.goBack() else service.goHome()
-                                                            check(ok) { "O Android não aceitou o comando." }
-                                                        }
+                                                            ?: error("Ative a acessibilidade do Projeto Super nas configurações do Android.")
+                                                        val parts = action.split(":")
+                                                        check(parts.size == 3) { "Coordenadas inválidas." }
+                                                        val x = parts[1].toIntOrNull() ?: error("Coordenada X inválida.")
+                                                        val y = parts[2].toIntOrNull() ?: error("Coordenada Y inválida.")
+                                                        check(x in 0..1000 && y in 0..1000) { "Toque fora dos limites." }
+                                                        check(service.tapNormalized(x, y)) { "O Android não aceitou o toque no display remoto." }
+                                                        ControlApi.decide(context, request.optString("id"), true)
                                                         return@launch
                                                     }
                                                     if (action == "camera_front" || action == "camera_back") {
