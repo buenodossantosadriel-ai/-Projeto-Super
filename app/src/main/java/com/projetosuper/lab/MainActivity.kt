@@ -1,5 +1,7 @@
 package com.projetosuper.lab
 
+// Build validation marker: automatic startup authorization is enabled on this branch.
+
 import android.Manifest
 import android.content.ComponentName
 import android.provider.Settings.Secure
