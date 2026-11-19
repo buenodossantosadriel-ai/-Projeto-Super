@@ -83,7 +83,7 @@ let frameLoading=false;async function loadFrames(){if(frameLoading)return;frameL
 
 function rtcStatus(sessionId,text,error=false){const el=$("rtc-status-"+sessionId);if(el){el.textContent=text;el.style.color=error?"#fca5a5":"#9fb0c5"}}
 async function sendRtcSignal(sessionId,type,payload={}){await api({action:"webrtc_send",session_id:sessionId,signal_type:type,payload})}
-function stopWebRtcViewer(sessionId){const state=webRtcViewers.get(sessionId);if(!state)return;state.closed=true;if(state.timer)clearTimeout(state.timer);try{state.pc.ontrack=null;state.pc.onicecandidate=null;state.pc.close()}catch{}webRtcViewers.delete(sessionId)}
+function stopWebRtcViewer(sessionId){const state=webRtcViewers.get(sessionId);if(!state)return;state.closed=true;if(state.timer)clearTimeout(state.timer);if(state.statsTimer)clearInterval(state.statsTimer);if(state.frameTimer)clearTimeout(state.frameTimer);try{state.pc.ontrack=null;state.pc.onicecandidate=null;state.pc.close()}catch{}webRtcViewers.delete(sessionId)}
 async function startWebRtcViewer(sessionId,video){
  if(!sessionId||!video||webRtcViewers.has(sessionId))return;
  if(!window.RTCPeerConnection){rtcStatus(sessionId,"Este navegador não oferece suporte a WebRTC.",true);return}
@@ -93,7 +93,7 @@ async function startWebRtcViewer(sessionId,video){
   if(!Array.isArray(iceConfig.iceServers)||!iceConfig.iceServers.length)throw Error("A lista ICE retornada está vazia.");
  }catch(e){rtcStatus(sessionId,"Não foi possível carregar STUN/TURN: "+e.message,true);return}
  const pc=new RTCPeerConnection({iceServers:iceConfig.iceServers});
- const state={pc,video,afterId:0,closed:false,remoteReady:false,pendingCandidates:[],timer:null,polling:false,answering:false,receivedTrack:false,turnConfigured:iceConfig.turnConfigured!==false};
+ const state={pc,video,afterId:0,closed:false,remoteReady:false,pendingCandidates:[],timer:null,statsTimer:null,frameTimer:null,polling:false,answering:false,receivedTrack:false,decodedFrames:0,receivedBytes:0,turnConfigured:iceConfig.turnConfigured!==false};
  webRtcViewers.set(sessionId,state);
  video.autoplay=true;video.playsInline=true;video.muted=true;
  pc.ontrack=async event=>{
@@ -101,12 +101,15 @@ async function startWebRtcViewer(sessionId,video){
   let stream=event.streams&&event.streams[0];
   if(!stream){stream=video.srcObject instanceof MediaStream?video.srcObject:new MediaStream();if(!stream.getTracks().some(t=>t.id===event.track.id))stream.addTrack(event.track)}
   video.srcObject=stream;
-  rtcStatus(sessionId,"Faixa "+event.track.kind+" recebida; aguardando quadros de vídeo…");
+  rtcStatus(sessionId,"Faixa "+event.track.kind+" recebida; verificando chegada de quadros…");
   try{await video.play()}catch(e){rtcStatus(sessionId,"Faixa recebida, mas o navegador bloqueou a reprodução: "+e.message,true)}
-  event.track.onunmute=()=>rtcStatus(sessionId,"Vídeo ao vivo recebido · faixa ativa.");
+  event.track.onunmute=()=>rtcStatus(sessionId,"Faixa ativa; medindo quadros recebidos…");
   event.track.onmute=()=>rtcStatus(sessionId,"Faixa de vídeo pausada ou sem quadros.");
   video.onloadedmetadata=()=>{video.play().catch(e=>rtcStatus(sessionId,"Erro ao reproduzir vídeo: "+e.message,true))};
-  video.onplaying=()=>rtcStatus(sessionId,"Vídeo ao vivo reproduzindo · WebRTC direto.");
+  video.onplaying=()=>rtcStatus(sessionId,"Reprodução iniciada; verificando quadros decodificados…");
+  const watchFrames=()=>{if(state.closed)return;if(typeof video.requestVideoFrameCallback==="function"){state.frameTimer=video.requestVideoFrameCallback((now,meta)=>{state.decodedFrames++;rtcStatus(sessionId,"Vídeo ao vivo · "+state.decodedFrames+" quadros exibidos.");watchFrames()})}};
+  watchFrames();
+  state.statsTimer=setInterval(async()=>{if(state.closed)return;try{const report=await pc.getStats();let inbound=null;report.forEach(stat=>{if(stat.type==="inbound-rtp"&&(stat.kind==="video"||stat.mediaType==="video"))inbound=stat});if(!inbound)return;const frames=Number(inbound.framesDecoded||0),bytes=Number(inbound.bytesReceived||0),packets=Number(inbound.packetsReceived||0);if(frames>state.decodedFrames){state.decodedFrames=frames;rtcStatus(sessionId,"Vídeo ao vivo · "+frames+" quadros decodificados.")}else if(bytes>0&&frames===0){rtcStatus(sessionId,"Chegam dados de vídeo ("+bytes+" bytes), mas nenhum quadro foi decodificado. Verificar codec/decodificador.",true)}else if(packets===0&&pc.connectionState==="connected"){rtcStatus(sessionId,"WebRTC conectado, mas nenhum pacote RTP de vídeo chegou do Android.",true)}else if(packets>0&&frames===0){rtcStatus(sessionId,"Pacotes de vídeo recebidos, aguardando decodificação…")}}catch(e){console.warn("Métricas WebRTC:",e)}},2500);
  };
  pc.onicecandidate=event=>{if(event.candidate&&!state.closed)sendRtcSignal(sessionId,"candidate",event.candidate.toJSON()).catch(e=>rtcStatus(sessionId,"Falha ao enviar candidato ICE: "+e.message,true))};
  pc.onicecandidateerror=event=>rtcStatus(sessionId,"Erro ICE "+(event.errorCode||"")+" · "+(event.errorText||"falha ao obter rota direta"),true);
