@@ -583,6 +583,38 @@ Deno.serve(async (req: Request) => {
       return respond({ ok: true, frame: { url: signed.signedUrl, created_at: frame.created_at }, session_status: session.status });
     }
 
+    if (action === "remove_device") {
+      const deviceId = String(body.device_id || "");
+      if (!deviceId) return respond({ ok: false, error: "Telefone inválido." }, 400);
+      const { data: ownedDevice, error: deviceLookupError } = await admin.from("projeto_super_devices")
+        .select("id").eq("id", deviceId).eq("owner_user_id", owner.id).maybeSingle();
+      if (deviceLookupError) return respond({ ok: false, error: "Não foi possível validar o telefone." }, 500);
+      if (!ownedDevice) return respond({ ok: false, error: "Telefone não encontrado ou não pertence à conta administrativa." }, 404);
+
+      const { data: sessions, error: sessionError } = await admin.from("projeto_super_device_sessions")
+        .select("id").eq("device_id", deviceId);
+      if (sessionError) return respond({ ok: false, error: "Não foi possível localizar as sessões do telefone." }, 500);
+      const sessionIds = (sessions || []).map((session) => session.id);
+
+      // Apaga primeiro arquivos e registros dependentes para evitar órfãos no Storage.
+      await clearSessionFrames(admin, sessionIds);
+      await clearAudioChunks(admin, sessionIds);
+
+      const [requestsResult, appsResult, sessionsResult] = await Promise.all([
+        admin.from("projeto_super_control_requests").delete().eq("device_id", deviceId),
+        admin.from("projeto_super_device_apps").delete().eq("device_id", deviceId),
+        admin.from("projeto_super_device_sessions").delete().eq("device_id", deviceId),
+      ]);
+      if (requestsResult.error || appsResult.error || sessionsResult.error) {
+        return respond({ ok: false, error: "A limpeza dos dados do telefone ficou incompleta. O registro principal foi preservado para permitir nova tentativa." }, 500);
+      }
+
+      const { error: deleteDeviceError } = await admin.from("projeto_super_devices")
+        .delete().eq("id", deviceId).eq("owner_user_id", owner.id);
+      if (deleteDeviceError) return respond({ ok: false, error: "Os dados associados foram limpos, mas não foi possível remover o registro do telefone." }, 500);
+      return respond({ ok: true, removed: true, device_id: deviceId });
+    }
+
     if (action === "revoke_device") {
       const deviceId = String(body.device_id || "");
       const { data: ownedDevice } = await admin.from("projeto_super_devices").select("id")
