@@ -311,7 +311,7 @@ Deno.serve(async (req: Request) => {
       return respond({ ok: true, signals: data || [], next_after_id: data?.length ? data[data.length - 1].id : afterId });
     }
 
-    if (action === "device_poll" || action === "device_sync_apps" || action === "device_decide" || action === "start_session" || action === "stop_session") {
+    if (action === "device_poll" || action === "device_sync_apps" || action === "device_decide" || action === "start_session" || action === "stop_session" || action === "start_remote_display_session") {
       const device = await getDevice(String(body.device_id || ""));
       if (!device) return respond({ ok: false, error: "Chave do dispositivo inválida." }, 401);
       if (action === "device_poll") {
@@ -319,6 +319,20 @@ Deno.serve(async (req: Request) => {
           .eq("device_id", device.id).eq("status", "pending").gt("expires_at", new Date().toISOString())
           .order("created_at", { ascending: true }).limit(10);
         return respond({ ok: true, paired: device.status === "paired", requests: requests || [] });
+      }
+      if (action === "start_remote_display_session") {
+        const { data: existingSession, error: existingError } = await admin.from("projeto_super_device_sessions")
+          .select("id").eq("device_id", device.id).eq("owner_user_id", device.owner_user_id)
+          .eq("session_type", "screen_share").eq("status", "active")
+          .order("started_at", { ascending: false }).limit(1).maybeSingle();
+        if (existingError) return respond({ ok: false, error: "Não foi possível verificar o ambiente remoto existente." }, 500);
+        if (existingSession) return respond({ ok: true, session_id: existingSession.id, reused: true });
+        const { data: session, error } = await admin.from("projeto_super_device_sessions").insert({
+          device_id: device.id, owner_user_id: device.owner_user_id, session_type: "screen_share",
+          local_consent_at: new Date().toISOString(), status: "active",
+        }).select("id").single();
+        if (error || !session) return respond({ ok: false, error: "Não foi possível preparar o ambiente remoto." }, 500);
+        return respond({ ok: true, session_id: session.id, reused: false });
       }
       if (action === "device_sync_apps") {
         if (device.status !== "paired" || !device.owner_user_id) {
@@ -383,8 +397,7 @@ Deno.serve(async (req: Request) => {
           }
           return respond({ ok: true, decision, opened_app_package: packageName });
         }
-        if (request.action === "remote_back" || request.action === "remote_home" ||
-            /^tap:(?:[0-9]|[1-9][0-9]{1,2}|1000):(?:[0-9]|[1-9][0-9]{1,2}|1000)$/.test(request.action) ||
+        if (/^tap:(?:[0-9]|[1-9][0-9]{1,2}|1000):(?:[0-9]|[1-9][0-9]{1,2}|1000)$/.test(request.action) ||
             (request.action.startsWith("type_text:") &&
               request.action.length > "type_text:".length &&
               request.action.length <= "type_text:".length + 2000)) {
@@ -496,13 +509,12 @@ Deno.serve(async (req: Request) => {
       const isOpenApp = requestedAction.startsWith("open_app:");
       const appPackage = isOpenApp ? requestedAction.slice("open_app:".length) : "";
       const validPackage = /^[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)+$/.test(appPackage) && appPackage.length <= 180;
-      const isRemoteNavigation = requestedAction === "remote_back" || requestedAction === "remote_home";
       const isTap = /^tap:(?:[0-9]|[1-9][0-9]{1,2}|1000):(?:[0-9]|[1-9][0-9]{1,2}|1000)$/.test(requestedAction);
       const isTypeText = requestedAction.startsWith("type_text:") &&
         requestedAction.length > "type_text:".length &&
         requestedAction.length <= "type_text:".length + 2000;
       if (!["camera_front", "camera_back", "screen_share", "microphone_live", "microphone_record", "stop_session"].includes(requestedAction) &&
-          !(isOpenApp && validPackage) && !isRemoteNavigation && !isTap && !isTypeText) {
+          !(isOpenApp && validPackage) && !isTap && !isTypeText) {
         return respond({ ok: false, error: "Controle inválido ou pacote de aplicativo inválido." }, 400);
       }
       const { data: device } = await admin.from("projeto_super_devices").select("id,last_seen_at")
@@ -533,7 +545,7 @@ Deno.serve(async (req: Request) => {
       // Controle de aplicativos é independente de transmissão de tela.
       // O dispositivo ainda precisa estar vinculado, com autorização geral ativa
       // e AccessibilityService habilitado pelo próprio usuário no Android.
-      const isRemoteCommand = isRemoteNavigation || isTap || isTypeText || (isOpenApp && validPackage);
+      const isRemoteCommand = isTap || isTypeText || (isOpenApp && validPackage);
       if (requestedAction !== "stop_session" && hasActiveSession && !isRemoteCommand) {
         return respond({ ok: false, error: "Encerre a sessão atual antes de iniciar outra." }, 409);
       }

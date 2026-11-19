@@ -1,8 +1,13 @@
 name: Android APK
+# Build the latest isolated-display authorization and remote-launch changes
 
 on:
   workflow_dispatch:
   push:
+    branches:
+      - android-native
+      - virtual-display-experiment
+  pull_request:
     branches:
       - android-native
 

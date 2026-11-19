@@ -110,6 +110,13 @@ object ControlApi {
         request(JSONObject().put("action", "device_poll").put("device_id", id), secret)
     }
 
+    suspend fun startRemoteDisplaySession(context: Context): JSONObject = withContext(Dispatchers.IO) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo não registrado.")
+        val secret = loadSecret(prefs) ?: throw IllegalStateException("Chave local indisponível.")
+        request(JSONObject().put("action", "start_remote_display_session").put("device_id", id), secret)
+    }
+
     suspend fun syncApps(context: Context, apps: List<LaunchableApp>): JSONObject = withContext(Dispatchers.IO) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo não registrado.")

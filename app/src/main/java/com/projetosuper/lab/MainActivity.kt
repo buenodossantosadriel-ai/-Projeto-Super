@@ -83,11 +83,6 @@ class MainActivity : ComponentActivity() {
             ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
     }
 
-    private fun openApp(packageName: String) {
-        val launchIntent = createAppLaunchIntent(packageName) ?: return
-        startActivity(launchIntent)
-    }
-
     private suspend fun runAuthorizedAppCommand(context: Context, request: JSONObject) {
         val requestId = request.optString("id")
         val action = request.optString("action")
@@ -100,18 +95,18 @@ class MainActivity : ComponentActivity() {
                 }
                 val launchIntent = createAppLaunchIntent(packageName)
                     ?: error("O Android não disponibilizou uma atividade de inicialização para este aplicativo.")
+                RemoteDisplayLauncher.start(context, launchIntent)
                 ControlApi.decide(context, requestId, true)
-                context.startActivity(launchIntent)
             }
             action.startsWith("type_text:") -> {
                 val text = action.substringAfter("type_text:")
                 check(text.isNotBlank() && text.length <= 2000) { "Texto vazio ou maior que 2.000 caracteres." }
                 val service = RemoteControlAccessibilityService.activeInstance
                     ?: error("Ative a acessibilidade do Projeto Super nas configurações do Android.")
-                ControlApi.decide(context, requestId, true)
                 check(service.setFocusedText(text)) {
-                    "Não foi encontrado um campo de texto ativo ou o aplicativo não permite preenchimento remoto."
+                    "Não foi possível inserir texto no campo focado do display remoto."
                 }
+                ControlApi.decide(context, requestId, true)
             }
             action.startsWith("tap:") -> {
                 val parts = action.split(":")
@@ -121,15 +116,8 @@ class MainActivity : ComponentActivity() {
                 check(x in 0..1000 && y in 0..1000) { "Toque fora dos limites." }
                 val service = RemoteControlAccessibilityService.activeInstance
                     ?: error("Ative a acessibilidade do Projeto Super nas configurações do Android.")
+                check(service.tapNormalized(x, y)) { "O Android não aceitou o toque no display remoto." }
                 ControlApi.decide(context, requestId, true)
-                check(service.tapNormalized(x, y)) { "O Android não aceitou o toque." }
-            }
-            action == "remote_back" || action == "remote_home" -> {
-                val service = RemoteControlAccessibilityService.activeInstance
-                    ?: error("Ative a acessibilidade do Projeto Super nas configurações do Android.")
-                ControlApi.decide(context, requestId, true)
-                val ok = if (action == "remote_back") service.goBack() else service.goHome()
-                check(ok) { "O Android não aceitou o comando." }
             }
             else -> error("Comando de aplicativo não reconhecido.")
         }
@@ -155,22 +143,30 @@ class MainActivity : ComponentActivity() {
             val deviceError = remember { mutableStateOf<String?>(null) }
             val pendingRequest = remember { mutableStateOf<JSONObject?>(null) }
             val pendingScreenRequestId = remember { mutableStateOf<String?>(null) }
+            val pendingInitialDisplaySessionId = remember { mutableStateOf<String?>(null) }
             val busy = remember { mutableStateOf(false) }
 
             val screenCaptureLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.StartActivityForResult()
             ) { result ->
                 val requestId = pendingScreenRequestId.value
+                val initialSessionId = pendingInitialDisplaySessionId.value
                 pendingScreenRequestId.value = null
-                if (requestId != null) {
+                pendingInitialDisplaySessionId.value = null
+                if (requestId != null || initialSessionId != null) {
                     scope.launch {
                         busy.value = true
-                        var createdSessionId: String? = null
+                        var createdSessionId: String? = initialSessionId
                         try {
                             if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-                                val response = ControlApi.decide(context, requestId, true)
-                                val sessionId = response.optString("session_id")
-                                check(sessionId.isNotBlank()) { "O servidor não confirmou a sessão de tela." }
+                                val sessionId = if (initialSessionId != null) {
+                                    initialSessionId
+                                } else {
+                                    val response = ControlApi.decide(context, requestId!!, true)
+                                    response.optString("session_id").also {
+                                        check(it.isNotBlank()) { "O servidor não confirmou a sessão de tela." }
+                                    }
+                                }
                                 createdSessionId = sessionId
                                 val start = Intent(context, ScreenCaptureService::class.java)
                                     .setAction(ScreenCaptureService.ACTION_START)
@@ -178,13 +174,26 @@ class MainActivity : ComponentActivity() {
                                     .putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
                                     .putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, result.data)
                                 ContextCompat.startForegroundService(context, start)
+                                if (initialSessionId != null) {
+                                    appControlAuthorized.value = true
+                                    context.getSharedPreferences("projeto_super_device", Context.MODE_PRIVATE)
+                                        .edit().putBoolean("app_control_authorized", true).apply()
+                                    val discoveredApps = loadLaunchableApps()
+                                    apps.value = discoveredApps
+                                    if (devicePaired.value) {
+                                        ControlApi.syncApps(context, discoveredApps)
+                                        appsSynced.value = true
+                                    }
+                                    deviceError.value = "Autorização geral concedida. Ambiente remoto preparado; o administrador já pode abrir os aplicativos pelo dashboard."
+                                }
                             } else {
-                                ControlApi.decide(context, requestId, false)
-                                deviceError.value = "Captura de tela recusada no Android."
+                                if (requestId != null) ControlApi.decide(context, requestId, false)
+                                if (initialSessionId != null) ControlApi.stopSession(context, initialSessionId)
+                                deviceError.value = "Autorização de captura recusada no Android. O controle remoto permanece desativado."
                             }
                         } catch (error: Exception) {
                             createdSessionId?.let { try { ControlApi.stopSession(context, it) } catch (_: Exception) {} }
-                            deviceError.value = error.message ?: "Não foi possível iniciar a captura de tela."
+                            deviceError.value = error.message ?: "Não foi possível iniciar o ambiente remoto."
                         } finally {
                             busy.value = false
                         }
@@ -251,7 +260,6 @@ class MainActivity : ComponentActivity() {
                                         try {
                                             ControlApi.decide(context, candidate.optString("id"), true)
                                             context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
-                                            context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
                                             context.startService(Intent(context, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP))
                                         } catch (error: Exception) {
                                             deviceError.value = error.message ?: "Não foi possível encerrar a sessão."
@@ -261,30 +269,22 @@ class MainActivity : ComponentActivity() {
                                     val requestedAction = candidate.optString("action")
                                     val isAppCommand = requestedAction.startsWith("open_app:") ||
                                         requestedAction.startsWith("tap:") ||
-                                        requestedAction.startsWith("type_text:") ||
-                                        requestedAction == "remote_back" || requestedAction == "remote_home"
-                                    if (isAppCommand && appControlAuthorized.value &&
-                                        RemoteControlAccessibilityService.activeInstance == null) {
-                                        busy.value = true
-                                        scope.launch {
-                                            try {
-                                                runAuthorizedAppCommand(context, candidate)
-                                                deviceError.value = null
-                                            } catch (error: Exception) {
-                                                try { ControlApi.decide(context, candidate.optString("id"), false) } catch (_: Exception) {}
-                                                deviceError.value = error.message ?: "Não foi possível executar o comando do aplicativo."
-                                            } finally {
-                                                busy.value = false
-                                            }
+                                        requestedAction.startsWith("type_text:")
+                                    if (isAppCommand) {
+                                        if (!appControlAuthorized.value) {
+                                            // A autorização geral é concedida uma única vez na tela inicial do app.
+                                            // Sem autorização, rejeita sem abrir uma confirmação por comando.
+                                            try { ControlApi.decide(context, candidate.optString("id"), false) } catch (_: Exception) {}
+                                            deviceError.value = "Controle remoto bloqueado: conceda a autorização geral no aplicativo Projeto Super."
                                         }
+                                        // Com autorização ativa, o AccessibilityService é o único consumidor
+                                        // dos comandos remotos e continua funcionando com a Activity em segundo plano.
                                         break
                                     }
-                                    val needsUiDecision = isAppCommand &&
-                                        (!appControlAuthorized.value || RemoteControlAccessibilityService.activeInstance == null)
                                     if (requestedAction in listOf(
                                             "camera_front", "camera_back", "screen_share",
                                             "microphone_live", "microphone_record"
-                                        ) || needsUiDecision) {
+                                        )) {
                                         selected = candidate
                                         break
                                     }
@@ -333,7 +333,6 @@ class MainActivity : ComponentActivity() {
                             )
                             Button(
                                 onClick = {
-                                    context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
                                     context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
                                     context.startService(Intent(context, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP))
                                 },
@@ -390,25 +389,32 @@ class MainActivity : ComponentActivity() {
                                 else "Ainda não autorizada. Nenhum comando remoto de aplicativo será executado.")
                             Button(
                                 onClick = {
-                                    appControlAuthorized.value = true
-                                    context.getSharedPreferences("projeto_super_device", Context.MODE_PRIVATE)
-                                        .edit().putBoolean("app_control_authorized", true).apply()
-                                    appsSynced.value = false
                                     scope.launch {
+                                        busy.value = true
                                         try {
-                                            if (devicePaired.value) {
-                                                ControlApi.syncApps(context, loadLaunchableApps())
-                                                appsSynced.value = true
+                                            check(devicePaired.value) { "Aguarde o vínculo seguro com a conta administrativa." }
+                                            val prefs = context.getSharedPreferences("projeto_super_device", Context.MODE_PRIVATE)
+                                            val existingDisplay = prefs.getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.INVALID_DISPLAY)
+                                            if (appControlAuthorized.value && existingDisplay != android.view.Display.INVALID_DISPLAY) {
+                                                deviceError.value = "Autorização geral ativa e ambiente remoto já preparado."
+                                            } else {
+                                                val session = ControlApi.startRemoteDisplaySession(context)
+                                                val sessionId = session.optString("session_id")
+                                                check(sessionId.isNotBlank()) { "O servidor não criou o ambiente remoto." }
+                                                pendingInitialDisplaySessionId.value = sessionId
+                                                val manager = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                                                screenCaptureLauncher.launch(manager.createScreenCaptureIntent())
                                             }
-                                            deviceError.value = "Autorização geral concedida para os aplicativos identificados."
                                         } catch (error: Exception) {
-                                            deviceError.value = error.message ?: "Autorização salva, mas houve falha ao sincronizar os aplicativos."
+                                            deviceError.value = error.message ?: "Não foi possível iniciar a autorização geral."
+                                        } finally {
+                                            busy.value = false
                                         }
                                     }
                                 },
-                                enabled = !appControlAuthorized.value,
+                                enabled = !busy.value,
                                 modifier = Modifier.fillMaxWidth()
-                            ) { Text(if (appControlAuthorized.value) "Autorização geral ativa" else "Autorizar todos os aplicativos identificados") }
+                            ) { Text(if (appControlAuthorized.value) "Preparar/repreparar ambiente remoto" else "Autorizar acesso remoto e preparar ambiente") }
                             Button(
                                 onClick = {
                                     appControlAuthorized.value = false
@@ -420,7 +426,7 @@ class MainActivity : ComponentActivity() {
                                 enabled = appControlAuthorized.value,
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Revogar autorização geral") }
-                            Text("A autorização vale para todos os aplicativos identificados com atividade de inicialização. Acessibilidade precisa ser ativada manualmente no Android para toques e navegação. Esta autorização não libera captura de tela, câmera ou microfone.")
+                            Text("A autorização geral é concedida junto com a preparação inicial do display remoto. O Android exibirá sua confirmação nativa de captura uma vez nessa configuração. Depois disso, o administrador abre os aplicativos pelo dashboard sem confirmações individuais. Acessibilidade ainda precisa ser ativada manualmente nas configurações do Android para toques e digitação. Se o Android encerrar o serviço ou revogar a captura, poderá ser necessário autorizar novamente.")
                         }
                         item {
                             Text("Aplicativos disponíveis", style = MaterialTheme.typography.titleLarge)
@@ -454,7 +460,6 @@ class MainActivity : ComponentActivity() {
                                         Text(app.label, style = MaterialTheme.typography.bodyLarge)
                                         Text(app.packageName, style = MaterialTheme.typography.bodySmall)
                                     }
-                                    TextButton(onClick = { openApp(app.packageName) }) { Text("Abrir") }
                                 }
                             }
                         }
@@ -462,50 +467,9 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val request = pendingRequest.value
-                if (request != null && !appControlAuthorized.value &&
-                    (request.optString("action").startsWith("open_app:") ||
-                        request.optString("action").startsWith("tap:") ||
-                        request.optString("action") == "remote_back" ||
-                        request.optString("action") == "remote_home")) {
-                    AlertDialog(
-                        onDismissRequest = { },
-                        title = { Text("Autorizar controle geral dos aplicativos?") },
-                        text = { Text("Uma única autorização habilita comandos remotos para todos os aplicativos identificados neste aparelho. O acesso pode ser revogado a qualquer momento. Toques e navegação também exigem que você ative manualmente a acessibilidade do Projeto Super nas configurações do Android.") },
-                        confirmButton = {
-                            TextButton(onClick = {
-                                appControlAuthorized.value = true
-                                context.getSharedPreferences("projeto_super_device", Context.MODE_PRIVATE)
-                                    .edit().putBoolean("app_control_authorized", true).apply()
-                                appsSynced.value = false
-                                pendingRequest.value = null
-                                scope.launch {
-                                    try {
-                                        ControlApi.syncApps(context, loadLaunchableApps())
-                                        appsSynced.value = true
-                                        runAuthorizedAppCommand(context, request)
-                                        deviceError.value = "Autorização geral concedida e primeiro comando executado."
-                                    } catch (error: Exception) {
-                                        deviceError.value = error.message ?: "Não foi possível concluir a solicitação."
-                                    }
-                                }
-                            }) { Text("Autorizar todos") }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = {
-                                pendingRequest.value = null
-                                scope.launch {
-                                    try { ControlApi.decide(context, request.optString("id"), false) } catch (_: Exception) {}
-                                }
-                                deviceError.value = "Autorização geral recusada. Nenhum comando foi executado."
-                            }) { Text("Recusar") }
-                        }
-                    )
-                }
-                if (request != null && (appControlAuthorized.value ||
-                    !(request.optString("action").startsWith("open_app:") ||
-                        request.optString("action").startsWith("tap:") ||
-                        request.optString("action") == "remote_back" ||
-                        request.optString("action") == "remote_home"))) {
+                // Solicitações de abertura, toque e digitação são executadas diretamente
+                // após a autorização geral persistente. Somente sessões sensíveis usam diálogo.
+                if (request != null) {
                     val action = request.optString("action")
                     val description = when (action) {
                         "camera_front" -> "O painel administrativo solicitou acesso à câmera frontal. A câmera ficará ativa enquanto a sessão estiver aberta."
@@ -513,15 +477,7 @@ class MainActivity : ComponentActivity() {
                         "screen_share" -> "O painel administrativo solicitou compartilhar a tela. Se aceitar aqui, o Android ainda mostrará sua confirmação nativa."
                         "microphone_live" -> "O painel administrativo solicitou áudio ao vivo pelo microfone. O microfone ficará ativo e haverá uma notificação persistente."
                         "microphone_record" -> "O painel administrativo solicitou uma gravação de áudio. A gravação só começará após sua confirmação e ficará indicada por notificação."
-                        else -> if (action.startsWith("open_app:")) {
-                            val packageName = action.substringAfter("open_app:")
-                            val appName = apps.value.firstOrNull { it.packageName == packageName }?.label ?: packageName
-                            "O painel administrativo solicitou abrir o aplicativo $appName ($packageName). Ele só será aberto se você aceitar."
-                        } else if (action.startsWith("tap:")) {
-                            "O dashboard solicitou um toque na tela compartilhada. Confirme para executar."
-                        } else if (action == "remote_back" || action == "remote_home") {
-                            "O dashboard solicitou navegação remota. Confirme para executar."
-                        } else "O painel administrativo solicitou iniciar uma sessão."
+                        else -> "O painel administrativo solicitou iniciar uma sessão."
                     }
                     AlertDialog(
                         onDismissRequest = {
@@ -565,38 +521,6 @@ class MainActivity : ComponentActivity() {
                                                     screenCaptureLauncher.launch(manager.createScreenCaptureIntent())
                                                 }
                                                 else -> {
-                                                    if (action.startsWith("open_app:")) {
-                                                        val packageName = action.substringAfter("open_app:")
-                                                        val launchIntent = createAppLaunchIntent(packageName)
-                                                        check(launchIntent != null) {
-                                                            "O Android não encontrou uma tela inicial para este aplicativo. Atualize a lista de apps e tente novamente."
-                                                        }
-                                                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-                                                        context.startActivity(launchIntent)
-                                                        ControlApi.decide(context, request.optString("id"), true)
-                                                        deviceError.value = null
-                                                        return@launch
-                                                    }
-                                                    if (action.startsWith("tap:") || action == "remote_back" || action == "remote_home") {
-                                                        val service = RemoteControlAccessibilityService.activeInstance
-                                                        check(service != null) {
-                                                            "Ative a acessibilidade do Projeto Super nas configurações do Android."
-                                                        }
-                                                        if (action.startsWith("tap:")) {
-                                                            val parts = action.split(":")
-                                                            check(parts.size == 3) { "Coordenadas inválidas." }
-                                                            val x = parts[1].toIntOrNull() ?: error("Coordenada X inválida.")
-                                                            val y = parts[2].toIntOrNull() ?: error("Coordenada Y inválida.")
-                                                            check(x in 0..1000 && y in 0..1000) { "Toque fora dos limites." }
-                                                            ControlApi.decide(context, request.optString("id"), true)
-                                                            check(service.tapNormalized(x, y)) { "O Android não aceitou o toque." }
-                                                        } else {
-                                                            ControlApi.decide(context, request.optString("id"), true)
-                                                            val ok = if (action == "remote_back") service.goBack() else service.goHome()
-                                                            check(ok) { "O Android não aceitou o comando." }
-                                                        }
-                                                        return@launch
-                                                    }
                                                     if (action == "camera_front" || action == "camera_back") {
                                                         check(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
                                                             "Permissão da câmera ausente. Habilite-a nas configurações do Android."

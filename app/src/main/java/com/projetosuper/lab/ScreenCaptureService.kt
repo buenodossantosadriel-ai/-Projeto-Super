@@ -73,8 +73,8 @@ class ScreenCaptureService : LifecycleService() {
         )
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_view)
-            .setContentTitle("Projeto Super — tela compartilhada")
-            .setContentText("Compartilhamento ativo por autorização do Android. Toque em Parar para encerrar.")
+            .setContentTitle("Projeto Super — ambiente remoto")
+            .setContentText("Display virtual ativo por autorização do Android. Toque em Parar para encerrar.")
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .addAction(android.R.drawable.ic_media_pause, "Parar", stopPending)
@@ -103,11 +103,26 @@ class ScreenCaptureService : LifecycleService() {
             projection?.registerCallback(object : MediaProjection.Callback() {
                 override fun onStop() { stopCapture(remoteAlreadyStopped = false) }
             }, Handler(mainLooper))
+            check(packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_ACTIVITIES_ON_SECONDARY_DISPLAYS)) {
+                "Este Android não declara suporte a atividades em displays secundários."
+            }
             virtualDisplay = projection?.createVirtualDisplay(
-                "ProjetoSuperScreen", width, height, metrics.densityDpi,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                "ProjetoSuperRemoteDisplay", width, height, metrics.densityDpi,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC or DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY,
                 imageReader?.surface, null, null
             )
+            val createdDisplay = virtualDisplay?.display
+                ?: error("O Android não criou o display virtual.")
+            check(createdDisplay.flags and android.view.Display.FLAG_PRIVATE == 0) {
+                "O Android criou um display privado; aplicativos externos não podem ser iniciados nele."
+            }
+            getSharedPreferences("projeto_super_device", Context.MODE_PRIVATE)
+                .edit()
+                .putInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, createdDisplay.displayId)
+                .putInt(RemoteDisplayLauncher.PREF_DISPLAY_WIDTH, width)
+                .putInt(RemoteDisplayLauncher.PREF_DISPLAY_HEIGHT, height)
+                .apply()
+            android.util.Log.i("ProjetoSuperScreen", "Display virtual público criado: id=${createdDisplay.displayId}, ${width}x${height}")
         } catch (error: Exception) {
             android.util.Log.e("ProjetoSuperScreen", "Falha ao iniciar compartilhamento", error)
             stopCapture()
@@ -145,7 +160,9 @@ class ScreenCaptureService : LifecycleService() {
         buffer.rewind()
         padded.copyPixelsFromBuffer(buffer)
         val cropped = Bitmap.createBitmap(padded, 0, 0, image.width, image.height)
-        val scaled = Bitmap.createScaledBitmap(cropped, minOf(800, image.width), (image.height * (minOf(640, image.width).toFloat() / image.width)).toInt().coerceAtLeast(1), true)
+        val targetWidth = minOf(800, image.width)
+        val targetHeight = (image.height * (targetWidth.toFloat() / image.width)).toInt().coerceAtLeast(1)
+        val scaled = Bitmap.createScaledBitmap(cropped, targetWidth, targetHeight, true)
         val out = ByteArrayOutputStream()
         scaled.compress(Bitmap.CompressFormat.JPEG, 58, out)
         if (scaled !== cropped) scaled.recycle()
@@ -186,6 +203,12 @@ class ScreenCaptureService : LifecycleService() {
         shuttingDown = true
         virtualDisplay?.release()
         virtualDisplay = null
+        getSharedPreferences("projeto_super_device", Context.MODE_PRIVATE)
+            .edit()
+            .remove(RemoteDisplayLauncher.PREF_DISPLAY_ID)
+            .remove(RemoteDisplayLauncher.PREF_DISPLAY_WIDTH)
+            .remove(RemoteDisplayLauncher.PREF_DISPLAY_HEIGHT)
+            .apply()
         imageReader?.close()
         imageReader = null
         projection?.stop()
