@@ -32,12 +32,7 @@
             <meta-data
                 android:name="android.accessibilityservice"
                 android:resource="@xml/remote_control_accessibility" />
-        </service>
-        <service
-            android:name=".WebRtcCaptureService"
-            android:exported="false"
-            android:foregroundServiceType="camera|mediaProjection" />
-        <service
+        </service>        <service
             android:name=".ScreenCaptureService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
