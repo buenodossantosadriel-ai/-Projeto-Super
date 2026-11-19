@@ -160,10 +160,13 @@ class RemoteControlAccessibilityService : AccessibilityService() {
     }
 
     fun tapNormalized(x: Int, y: Int): Boolean {
-        val metrics = resources.displayMetrics
+        val prefs = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
+        val width = prefs.getInt(RemoteDisplayLauncher.PREF_DISPLAY_WIDTH, 0)
+        val height = prefs.getInt(RemoteDisplayLauncher.PREF_DISPLAY_HEIGHT, 0)
+        if (width <= 0 || height <= 0) return false
         return tap(
-            (x.coerceIn(0, 1000) / 1000f) * metrics.widthPixels,
-            (y.coerceIn(0, 1000) / 1000f) * metrics.heightPixels
+            (x.coerceIn(0, 1000) / 1000f) * width,
+            (y.coerceIn(0, 1000) / 1000f) * height
         )
     }
 
