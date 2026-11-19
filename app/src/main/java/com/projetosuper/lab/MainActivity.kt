@@ -232,7 +232,7 @@ class MainActivity : ComponentActivity() {
                                 appsSynced.value = true
                             }
                             deviceStatus.value = if (devicePaired.value) {
-                                "Dispositivo vinculado. Cada pedido remoto exige sua confirmação neste aparelho."
+                                "Dispositivo vinculado. Com autorização geral ativa, comandos de aplicativos seguem a permissão concedida neste aparelho."
                             } else {
                                 "Conectando automaticamente à conta administrativa..."
                             }
