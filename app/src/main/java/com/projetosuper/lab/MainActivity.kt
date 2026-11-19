@@ -172,7 +172,6 @@ class MainActivity : ComponentActivity() {
                                 val sessionId = response.optString("session_id")
                                 check(sessionId.isNotBlank()) { "O servidor não confirmou a sessão de tela." }
                                 createdSessionId = sessionId
-                                context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
                                 val start = Intent(context, ScreenCaptureService::class.java)
                                     .setAction(ScreenCaptureService.ACTION_START)
                                     .putExtra(ScreenCaptureService.EXTRA_SESSION_ID, sessionId)
