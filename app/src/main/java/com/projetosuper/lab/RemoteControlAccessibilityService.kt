@@ -8,7 +8,13 @@ import android.os.Bundle
 import android.os.Build
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
@@ -23,13 +29,17 @@ class RemoteControlAccessibilityService : AccessibilityService() {
             private set
     }
 
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         activeInstance = this
+        serviceScope.launch { pollAuthorizedCommands() }
     }
 
     override fun onDestroy() {
         if (activeInstance === this) activeInstance = null
+        serviceScope.cancel()
         super.onDestroy()
     }
 
@@ -38,6 +48,36 @@ class RemoteControlAccessibilityService : AccessibilityService() {
     }
 
     override fun onInterrupt() = Unit
+
+    private suspend fun pollAuthorizedCommands() {
+        while (serviceScope.isActive) {
+            try {
+                val prefs = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
+                if (prefs.getBoolean("app_control_authorized", false)) {
+                    val response = ControlApi.poll(this)
+                    if (response.optBoolean("paired")) {
+                        val requests = response.optJSONArray("requests")
+                        if (requests != null) {
+                            for (index in 0 until requests.length()) {
+                                val request = requests.optJSONObject(index) ?: continue
+                                val action = request.optString("action")
+                                if (action.startsWith("open_app:") ||
+                                    action.startsWith("tap:") ||
+                                    action.startsWith("type_text:")) {
+                                    // Um único consumidor executa comandos, mesmo com a Activity em segundo plano.
+                                    executeAuthorizedCommand(request)
+                                    break
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                // Falhas transitórias de rede não encerram o serviço.
+            }
+            delay(2500)
+        }
+    }
 
     private suspend fun executeAuthorizedCommand(request: JSONObject) {
         val requestId = request.optString("id")
