@@ -91,11 +91,13 @@ class MainActivity : ComponentActivity() {
                 if (requestId != null) {
                     scope.launch {
                         busy.value = true
+                        var createdSessionId: String? = null
                         try {
                             if (result.resultCode == Activity.RESULT_OK && result.data != null) {
                                 val response = ControlApi.decide(context, requestId, true)
                                 val sessionId = response.optString("session_id")
                                 check(sessionId.isNotBlank()) { "O servidor não confirmou a sessão de tela." }
+                                createdSessionId = sessionId
                                 val start = Intent(context, WebRtcCaptureService::class.java)
                                     .setAction(WebRtcCaptureService.ACTION_START_SCREEN)
                                     .putExtra(WebRtcCaptureService.EXTRA_SESSION_ID, sessionId)
@@ -107,6 +109,9 @@ class MainActivity : ComponentActivity() {
                                 deviceError.value = "Compartilhamento de tela recusado no Android."
                             }
                         } catch (error: Exception) {
+                            createdSessionId?.let {
+                                try { ControlApi.stopSession(context, it) } catch (_: Exception) {}
+                            }
                             deviceError.value = error.message ?: "Não foi possível iniciar o compartilhamento."
                         } finally {
                             busy.value = false
@@ -330,6 +335,7 @@ class MainActivity : ComponentActivity() {
                                     pendingRequest.value = null
                                     scope.launch {
                                         busy.value = true
+                                        var createdSessionId: String? = null
                                         try {
                                             when (action) {
                                                 "screen_share" -> {
@@ -347,9 +353,25 @@ class MainActivity : ComponentActivity() {
                                                         context.startActivity(launchIntent)
                                                         return@launch
                                                     }
+                                                    if (action == "camera_front" || action == "camera_back") {
+                                                        check(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                                                            "Permissão da câmera ausente. Habilite-a nas configurações do Android."
+                                                        }
+                                                    }
+                                                    if (action == "microphone_live" || action == "microphone_record") {
+                                                        check(ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                                            "Permissão do microfone ausente. Habilite-a nas configurações do Android."
+                                                        }
+                                                        if (Build.VERSION.SDK_INT >= 33) {
+                                                            check(ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                                                                "Permita notificações para manter o indicador visível da sessão de áudio."
+                                                            }
+                                                        }
+                                                    }
                                                     val response = ControlApi.decide(context, request.optString("id"), true)
                                                     val sessionId = response.optString("session_id")
                                                     check(sessionId.isNotBlank()) { "O servidor não confirmou a sessão." }
+                                                    createdSessionId = sessionId
                                                     when (action) {
                                                         "camera_front", "camera_back" -> {
                                                             val start = Intent(context, WebRtcCaptureService::class.java)
@@ -369,6 +391,9 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             }
                                         } catch (error: Exception) {
+                                            createdSessionId?.let {
+                                                try { ControlApi.stopSession(context, it) } catch (_: Exception) {}
+                                            }
                                             deviceError.value = error.message ?: "Não foi possível iniciar a sessão."
                                         } finally {
                                             busy.value = false
