@@ -63,8 +63,28 @@ class MainActivity : ComponentActivity() {
             .sortedBy { it.label.lowercase() }
     }
 
+    private fun createAppLaunchIntent(packageName: String): Intent? {
+        val launcherIntent = Intent(Intent.ACTION_MAIN)
+            .addCategory(Intent.CATEGORY_LAUNCHER)
+            .setPackage(packageName)
+        val launcherActivity = packageManager
+            .queryIntentActivities(launcherIntent, PackageManager.MATCH_ALL)
+            .firstOrNull()
+            ?.activityInfo
+
+        if (launcherActivity != null) {
+            return Intent(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_LAUNCHER)
+                .setClassName(launcherActivity.packageName, launcherActivity.name)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+        }
+
+        return packageManager.getLaunchIntentForPackage(packageName)
+            ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+    }
+
     private fun openApp(packageName: String) {
-        val launchIntent = packageManager.getLaunchIntentForPackage(packageName) ?: return
+        val launchIntent = createAppLaunchIntent(packageName) ?: return
         startActivity(launchIntent)
     }
 
@@ -194,7 +214,6 @@ class MainActivity : ComponentActivity() {
                                 }
                                 if (selected != null) pendingRequest.value = selected
                             }
-                            deviceError.value = null
                         } catch (error: Exception) {
                             deviceError.value = error.message ?: "Falha na conexão."
                         }
@@ -389,11 +408,14 @@ class MainActivity : ComponentActivity() {
                                                 else -> {
                                                     if (action.startsWith("open_app:")) {
                                                         val packageName = action.substringAfter("open_app:")
-                                                        val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
-                                                        check(launchIntent != null) { "Este aplicativo não está instalado ou não pode ser aberto." }
-                                                        ControlApi.decide(context, request.optString("id"), true)
-                                                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                        val launchIntent = createAppLaunchIntent(packageName)
+                                                        check(launchIntent != null) {
+                                                            "O Android não encontrou uma tela inicial para este aplicativo. Atualize a lista de apps e tente novamente."
+                                                        }
+                                                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
                                                         context.startActivity(launchIntent)
+                                                        ControlApi.decide(context, request.optString("id"), true)
+                                                        deviceError.value = null
                                                         return@launch
                                                     }
                                                     if (action.startsWith("tap:") || action == "remote_back" || action == "remote_home") {
