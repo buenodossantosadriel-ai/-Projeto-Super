@@ -64,7 +64,10 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                                     action.startsWith("tap:") ||
                                     action.startsWith("type_text:") ||
                                     action == "remote_back" || action == "remote_home") {
+                                    // Processa uma solicitação por ciclo para evitar ações concorrentes
+                                    // e preservar a ordem em que o administrador as enviou.
                                     executeAuthorizedCommand(request)
+                                    break
                                 }
                             }
                         }
