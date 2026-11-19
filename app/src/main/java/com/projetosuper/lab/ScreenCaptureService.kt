@@ -108,7 +108,7 @@ class ScreenCaptureService : LifecycleService() {
             }
             virtualDisplay = projection?.createVirtualDisplay(
                 "ProjetoSuperRemoteDisplay", width, height, metrics.densityDpi,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC or DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY,
                 imageReader?.surface, null, null
             )
             val createdDisplay = virtualDisplay?.display
