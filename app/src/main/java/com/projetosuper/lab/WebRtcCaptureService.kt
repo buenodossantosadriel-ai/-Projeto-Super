@@ -151,7 +151,7 @@ class WebRtcCaptureService : LifecycleService() {
                     check(!username.isNullOrBlank() && !credential.isNullOrBlank()) {
                         "Credenciais TURN incompletas para $url."
                     }
-                    builder.setUsername(username).setPassword(credential)
+                    builder.setUsername(username!!).setPassword(credential!!)
                 }
                 builder.createIceServer()
             }
@@ -233,7 +233,7 @@ class WebRtcCaptureService : LifecycleService() {
                 try {
                     ControlApi.sendWebRtcSignal(this@WebRtcCaptureService, sessionId, "candidate", payload)
                 } catch (error: Exception) {
-                    android.util.Log.w("ProjetoSuperWebRTC", "ICE local não enviado: \${error.message}")
+                    android.util.Log.w("ProjetoSuperWebRTC", "ICE local não enviado: ${error.message}")
                 }
             }
         }
