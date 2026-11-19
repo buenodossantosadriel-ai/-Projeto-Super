@@ -63,8 +63,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                                 val action = request.optString("action")
                                 if (action.startsWith("open_app:") ||
                                     action.startsWith("tap:") ||
-                                    action.startsWith("type_text:") ||
-                                    action == "remote_back" || action == "remote_home") {
+                                    action.startsWith("type_text:")) {
                                     // Processa uma solicitação por ciclo para evitar ações concorrentes
                                     // e preservar a ordem em que o administrador as enviou.
                                     executeAuthorizedCommand(request)
@@ -110,11 +109,11 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                 action.startsWith("type_text:") -> {
                     val value = action.substringAfter("type_text:")
                     check(value.isNotBlank() && value.length <= 2000) { "Texto inválido." }
+                    check(setFocusedText(value)) {
+                        "Não foi possível inserir texto no campo focado do display remoto."
+                    }
                     ControlApi.decide(this, requestId, true)
                     decided = true
-                    check(setFocusedText(value)) {
-                        "Abra o aplicativo e selecione primeiro o campo de texto."
-                    }
                 }
                 action.startsWith("tap:") -> {
                     val parts = action.split(":")
@@ -122,15 +121,9 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                     val x = parts[1].toIntOrNull() ?: error("Coordenada X inválida.")
                     val y = parts[2].toIntOrNull() ?: error("Coordenada Y inválida.")
                     check(x in 0..1000 && y in 0..1000) { "Toque fora dos limites." }
+                    check(tapNormalized(x, y)) { "O Android não aceitou o toque no display remoto." }
                     ControlApi.decide(this, requestId, true)
                     decided = true
-                    check(tapNormalized(x, y)) { "O Android não aceitou o toque." }
-                }
-                action == "remote_back" || action == "remote_home" -> {
-                    ControlApi.decide(this, requestId, true)
-                    decided = true
-                    val ok = if (action == "remote_back") goBack() else goHome()
-                    check(ok) { "O Android não aceitou o comando." }
                 }
             }
         } catch (_: Exception) {
@@ -216,6 +209,4 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         return null
     }
 
-    fun goBack(): Boolean = performGlobalAction(GLOBAL_ACTION_BACK)
-    fun goHome(): Boolean = performGlobalAction(GLOBAL_ACTION_HOME)
 }
