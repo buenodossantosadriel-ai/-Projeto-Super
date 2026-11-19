@@ -348,6 +348,17 @@ Deno.serve(async (req: Request) => {
         const requestId = String(body.request_id || "");
         const decision = body.decision === "accept" ? "accepted" : body.decision === "reject" ? "rejected" : "";
         if (!decision) return respond({ ok: false, error: "Decisão inválida." }, 400);
+        const { data: pendingRequest } = await admin.from("projeto_super_control_requests")
+          .select("action").eq("id", requestId).eq("device_id", device.id)
+          .eq("status", "pending").gt("expires_at", new Date().toISOString()).maybeSingle();
+        if (!pendingRequest) return respond({ ok: false, error: "Solicitação expirada ou já processada." }, 409);
+        if (decision === "accepted" && pendingRequest.action.startsWith("open_app:")) {
+          const packageName = pendingRequest.action.slice("open_app:".length);
+          const { data: installedApp, error: appLookupError } = await admin.from("projeto_super_device_apps")
+            .select("package_name").eq("device_id", device.id).eq("package_name", packageName).maybeSingle();
+          if (appLookupError) return respond({ ok: false, error: "Não foi possível validar o aplicativo detectado." }, 500);
+          if (!installedApp) return respond({ ok: false, error: "Aplicativo não consta na lista detectada e sincronizada deste telefone." }, 403);
+        }
         const { data: request } = await admin.from("projeto_super_control_requests").update({
           status: decision, handled_at: new Date().toISOString(),
         }).eq("id", requestId).eq("device_id", device.id).eq("status", "pending")
@@ -497,6 +508,12 @@ Deno.serve(async (req: Request) => {
       const { data: device } = await admin.from("projeto_super_devices").select("id,last_seen_at")
         .eq("id", deviceId).eq("owner_user_id", owner.id).eq("status", "paired").maybeSingle();
       if (!device) return respond({ ok: false, error: "Dispositivo não encontrado." }, 404);
+      if (isOpenApp) {
+        const { data: installedApp, error: appLookupError } = await admin.from("projeto_super_device_apps")
+          .select("package_name").eq("device_id", deviceId).eq("package_name", appPackage).maybeSingle();
+        if (appLookupError) return respond({ ok: false, error: "Não foi possível validar a lista de aplicativos." }, 500);
+        if (!installedApp) return respond({ ok: false, error: "Este aplicativo ainda não foi identificado e sincronizado pelo telefone." }, 404);
+      }
       const { data: activeSession } = await admin.from("projeto_super_device_sessions").select("id,session_type,last_frame_at,started_at")
         .eq("device_id", deviceId).eq("owner_user_id", owner.id).eq("status", "active").limit(1);
       let hasActiveSession = Boolean(activeSession?.length);
@@ -513,8 +530,9 @@ Deno.serve(async (req: Request) => {
       if (requestedAction === "stop_session" && !hasActiveSession) {
         return respond({ ok: false, error: "Não há sessão ativa para encerrar." }, 409);
       }
-      if (isTypeText && (!hasActiveSession || activeSession?.[0]?.session_type !== "screen_share")) {
-        return respond({ ok: false, error: "Inicie e mantenha o compartilhamento de tela antes de enviar texto remoto." }, 409);
+      const requiresVisibleScreen = isRemoteNavigation || isTap || isTypeText;
+      if (requiresVisibleScreen && (!hasActiveSession || activeSession?.[0]?.session_type !== "screen_share")) {
+        return respond({ ok: false, error: "Inicie e mantenha o compartilhamento de tela autorizado antes de enviar toques, navegação ou texto remoto." }, 409);
       }
       const isRemoteCommand = isRemoteNavigation || isTap || isTypeText || (isOpenApp && validPackage);
       if (requestedAction !== "stop_session" && hasActiveSession &&
