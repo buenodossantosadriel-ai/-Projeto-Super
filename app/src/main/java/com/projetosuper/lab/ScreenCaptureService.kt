@@ -116,7 +116,7 @@ class ScreenCaptureService : LifecycleService() {
 
     private fun processImage(image: Image) {
         val now = android.os.SystemClock.elapsedRealtime()
-        if (now - lastFrameAt < 1100 || !uploading.compareAndSet(false, true)) {
+        if (now - lastFrameAt < 300 || !uploading.compareAndSet(false, true)) {
             image.close()
             return
         }
@@ -145,9 +145,9 @@ class ScreenCaptureService : LifecycleService() {
         buffer.rewind()
         padded.copyPixelsFromBuffer(buffer)
         val cropped = Bitmap.createBitmap(padded, 0, 0, image.width, image.height)
-        val scaled = Bitmap.createScaledBitmap(cropped, minOf(640, image.width), (image.height * (minOf(640, image.width).toFloat() / image.width)).toInt().coerceAtLeast(1), true)
+        val scaled = Bitmap.createScaledBitmap(cropped, minOf(800, image.width), (image.height * (minOf(640, image.width).toFloat() / image.width)).toInt().coerceAtLeast(1), true)
         val out = ByteArrayOutputStream()
-        scaled.compress(Bitmap.CompressFormat.JPEG, 60, out)
+        scaled.compress(Bitmap.CompressFormat.JPEG, 58, out)
         if (scaled !== cropped) scaled.recycle()
         cropped.recycle()
         padded.recycle()
