@@ -83,11 +83,6 @@ class MainActivity : ComponentActivity() {
             ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
     }
 
-    private fun openApp(packageName: String) {
-        val launchIntent = createAppLaunchIntent(packageName) ?: return
-        startActivity(launchIntent)
-    }
-
     private suspend fun runAuthorizedAppCommand(context: Context, request: JSONObject) {
         val requestId = request.optString("id")
         val action = request.optString("action")
@@ -446,7 +441,6 @@ class MainActivity : ComponentActivity() {
                                         Text(app.label, style = MaterialTheme.typography.bodyLarge)
                                         Text(app.packageName, style = MaterialTheme.typography.bodySmall)
                                     }
-                                    TextButton(onClick = { openApp(app.packageName) }) { Text("Abrir") }
                                 }
                             }
                         }
@@ -457,7 +451,7 @@ class MainActivity : ComponentActivity() {
                 if (request != null && !appControlAuthorized.value &&
                     (request.optString("action").startsWith("open_app:") ||
                         request.optString("action").startsWith("tap:") ||
-)) {
+                        request.optString("action").startsWith("type_text:"))) {
                     AlertDialog(
                         onDismissRequest = { },
                         title = { Text("Autorizar controle geral dos aplicativos?") },
@@ -495,7 +489,7 @@ class MainActivity : ComponentActivity() {
                 if (request != null && (appControlAuthorized.value ||
                     !(request.optString("action").startsWith("open_app:") ||
                         request.optString("action").startsWith("tap:") ||
-))) {
+                        request.optString("action").startsWith("type_text:")))) {
                     val action = request.optString("action")
                     val description = when (action) {
                         "camera_front" -> "O painel administrativo solicitou acesso à câmera frontal. A câmera ficará ativa enquanto a sessão estiver aberta."
