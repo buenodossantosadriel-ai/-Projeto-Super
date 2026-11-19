@@ -253,23 +253,12 @@ class MainActivity : ComponentActivity() {
                                     if (isAppCommand) {
                                         if (!appControlAuthorized.value) {
                                             // A autorização geral é concedida uma única vez na tela inicial do app.
-                                            // Nunca abrir uma confirmação por comando solicitado pelo dashboard.
+                                            // Sem autorização, rejeita sem abrir uma confirmação por comando.
                                             try { ControlApi.decide(context, candidate.optString("id"), false) } catch (_: Exception) {}
                                             deviceError.value = "Controle remoto bloqueado: conceda a autorização geral no aplicativo Projeto Super."
-                                        } else {
-                                            busy.value = true
-                                            scope.launch {
-                                                try {
-                                                    runAuthorizedAppCommand(context, candidate)
-                                                    deviceError.value = null
-                                                } catch (error: Exception) {
-                                                    try { ControlApi.decide(context, candidate.optString("id"), false) } catch (_: Exception) {}
-                                                    deviceError.value = error.message ?: "Não foi possível executar o comando do aplicativo."
-                                                } finally {
-                                                    busy.value = false
-                                                }
-                                            }
                                         }
+                                        // Com autorização ativa, o AccessibilityService é o único consumidor
+                                        // dos comandos remotos e continua funcionando com a Activity em segundo plano.
                                         break
                                     }
                                     if (requestedAction in listOf(
