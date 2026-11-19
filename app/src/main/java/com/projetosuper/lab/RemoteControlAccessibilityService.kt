@@ -98,13 +98,13 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                         .setPackage(packageName)
                     val info = packageManager.queryIntentActivities(launcherIntent, 0).firstOrNull()?.activityInfo
                         ?: error("Aplicativo não disponível para abertura.")
-                    ControlApi.decide(this, requestId, true)
-                    decided = true
                     val launch = Intent(Intent.ACTION_MAIN)
                         .addCategory(Intent.CATEGORY_LAUNCHER)
                         .setClassName(info.packageName, info.name)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
                     withContext(Dispatchers.Main) { RemoteDisplayLauncher.start(this@RemoteControlAccessibilityService, launch) }
+                    ControlApi.decide(this, requestId, true)
+                    decided = true
                 }
                 action.startsWith("type_text:") -> {
                     val value = action.substringAfter("type_text:")

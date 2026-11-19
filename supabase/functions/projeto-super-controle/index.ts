@@ -383,8 +383,7 @@ Deno.serve(async (req: Request) => {
           }
           return respond({ ok: true, decision, opened_app_package: packageName });
         }
-        if (request.action === "remote_back" || request.action === "remote_home" ||
-            /^tap:(?:[0-9]|[1-9][0-9]{1,2}|1000):(?:[0-9]|[1-9][0-9]{1,2}|1000)$/.test(request.action) ||
+        if (/^tap:(?:[0-9]|[1-9][0-9]{1,2}|1000):(?:[0-9]|[1-9][0-9]{1,2}|1000)$/.test(request.action) ||
             (request.action.startsWith("type_text:") &&
               request.action.length > "type_text:".length &&
               request.action.length <= "type_text:".length + 2000)) {
@@ -501,7 +500,7 @@ Deno.serve(async (req: Request) => {
         requestedAction.length > "type_text:".length &&
         requestedAction.length <= "type_text:".length + 2000;
       if (!["camera_front", "camera_back", "screen_share", "microphone_live", "microphone_record", "stop_session"].includes(requestedAction) &&
-          !(isOpenApp && validPackage) && !isRemoteNavigation && !isTap && !isTypeText) {
+          !(isOpenApp && validPackage) && !isTap && !isTypeText) {
         return respond({ ok: false, error: "Controle inválido ou pacote de aplicativo inválido." }, 400);
       }
       const { data: device } = await admin.from("projeto_super_devices").select("id,last_seen_at")

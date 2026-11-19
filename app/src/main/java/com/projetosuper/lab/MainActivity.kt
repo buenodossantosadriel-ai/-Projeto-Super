@@ -254,8 +254,7 @@ class MainActivity : ComponentActivity() {
                                     val requestedAction = candidate.optString("action")
                                     val isAppCommand = requestedAction.startsWith("open_app:") ||
                                         requestedAction.startsWith("tap:") ||
-                                        requestedAction.startsWith("type_text:") ||
-
+                                        requestedAction.startsWith("type_text:")
                                     if (isAppCommand && appControlAuthorized.value &&
                                         RemoteControlAccessibilityService.activeInstance == null) {
                                         busy.value = true
@@ -462,7 +461,7 @@ class MainActivity : ComponentActivity() {
                     AlertDialog(
                         onDismissRequest = { },
                         title = { Text("Autorizar controle geral dos aplicativos?") },
-                        text = { Text("Uma única autorização habilita comandos remotos para todos os aplicativos identificados neste aparelho. O acesso pode ser revogado a qualquer momento. Toques e navegação também exigem que você ative manualmente a acessibilidade do Projeto Super nas configurações do Android.") },
+                        text = { Text("Uma única autorização habilita comandos remotos para os aplicativos identificados. O acesso pode ser revogado a qualquer momento. Toques e digitação também exigem que você ative manualmente a acessibilidade do Projeto Super.") },
                         confirmButton = {
                             TextButton(onClick = {
                                 appControlAuthorized.value = true
@@ -496,8 +495,7 @@ class MainActivity : ComponentActivity() {
                 if (request != null && (appControlAuthorized.value ||
                     !(request.optString("action").startsWith("open_app:") ||
                         request.optString("action").startsWith("tap:") ||
-                        request.optString("action") == "remote_back" ||
-                        request.optString("action") == "remote_home"))) {
+))) {
                     val action = request.optString("action")
                     val description = when (action) {
                         "camera_front" -> "O painel administrativo solicitou acesso à câmera frontal. A câmera ficará ativa enquanto a sessão estiver aberta."
@@ -511,8 +509,6 @@ class MainActivity : ComponentActivity() {
                             "O painel administrativo solicitou abrir o aplicativo $appName ($packageName). Ele só será aberto se você aceitar."
                         } else if (action.startsWith("tap:")) {
                             "O dashboard solicitou um toque na tela compartilhada. Confirme para executar."
-                        } else if (action == "remote_back" || action == "remote_home") {
-                            "O dashboard solicitou navegação remota. Confirme para executar."
                         } else "O painel administrativo solicitou iniciar uma sessão."
                     }
                     AlertDialog(
