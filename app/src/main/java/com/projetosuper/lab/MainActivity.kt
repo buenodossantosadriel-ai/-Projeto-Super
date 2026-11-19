@@ -101,7 +101,7 @@ class MainActivity : ComponentActivity() {
                 val launchIntent = createAppLaunchIntent(packageName)
                     ?: error("O Android não disponibilizou uma atividade de inicialização para este aplicativo.")
                 ControlApi.decide(context, requestId, true)
-                context.startActivity(launchIntent)
+                RemoteDisplayLauncher.start(context, launchIntent)
             }
             action.startsWith("type_text:") -> {
                 val text = action.substringAfter("type_text:")
