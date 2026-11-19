@@ -1,6 +1,7 @@
 package com.projetosuper.lab
 
 // Build validation marker: automatic startup authorization is enabled on this branch.
+// Validation run includes the combined control and screen-capture consent flow.
 
 import android.Manifest
 import android.content.ComponentName
