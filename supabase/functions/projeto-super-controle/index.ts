@@ -372,6 +372,10 @@ Deno.serve(async (req: Request) => {
           }
           return respond({ ok: true, decision, opened_app_package: packageName });
         }
+        if (request.action === "remote_back" || request.action === "remote_home" ||
+            /^tap:(?:[0-9]|[1-9][0-9]{1,2}|1000):(?:[0-9]|[1-9][0-9]{1,2}|1000)$/.test(request.action)) {
+          return respond({ ok: true, decision, remote_command: request.action });
+        }
         const sessionType = request.action;
         if (!["camera_front", "camera_back", "screen_share", "microphone_live", "microphone_record"].includes(sessionType)) return respond({ ok: false, error: "Ação não suportada." }, 400);
         const { data: session, error } = await admin.from("projeto_super_device_sessions").insert({
@@ -451,8 +455,10 @@ Deno.serve(async (req: Request) => {
       const isOpenApp = requestedAction.startsWith("open_app:");
       const appPackage = isOpenApp ? requestedAction.slice("open_app:".length) : "";
       const validPackage = /^[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)+$/.test(appPackage) && appPackage.length <= 180;
+      const isRemoteNavigation = requestedAction === "remote_back" || requestedAction === "remote_home";
+      const isTap = /^tap:(?:[0-9]|[1-9][0-9]{1,2}|1000):(?:[0-9]|[1-9][0-9]{1,2}|1000)$/.test(requestedAction);
       if (!["camera_front", "camera_back", "screen_share", "microphone_live", "microphone_record", "stop_session"].includes(requestedAction) &&
-          !(isOpenApp && validPackage)) {
+          !(isOpenApp && validPackage) && !isRemoteNavigation && !isTap) {
         return respond({ ok: false, error: "Controle inválido ou pacote de aplicativo inválido." }, 400);
       }
       const { data: device } = await admin.from("projeto_super_devices").select("id,last_seen_at")
