@@ -103,6 +103,16 @@ class MainActivity : ComponentActivity() {
                 ControlApi.decide(context, requestId, true)
                 context.startActivity(launchIntent)
             }
+            action.startsWith("type_text:") -> {
+                val text = action.substringAfter("type_text:")
+                check(text.isNotBlank() && text.length <= 2000) { "Texto vazio ou maior que 2.000 caracteres." }
+                val service = RemoteControlAccessibilityService.activeInstance
+                    ?: error("Ative a acessibilidade do Projeto Super nas configurações do Android.")
+                ControlApi.decide(context, requestId, true)
+                check(service.setFocusedText(text)) {
+                    "Não foi encontrado um campo de texto ativo ou o aplicativo não permite preenchimento remoto."
+                }
+            }
             action.startsWith("tap:") -> {
                 val parts = action.split(":")
                 check(parts.size == 3) { "Coordenadas inválidas." }
@@ -246,6 +256,7 @@ class MainActivity : ComponentActivity() {
                                     val requestedAction = candidate.optString("action")
                                     val isAppCommand = requestedAction.startsWith("open_app:") ||
                                         requestedAction.startsWith("tap:") ||
+                                        requestedAction.startsWith("type_text:") ||
                                         requestedAction == "remote_back" || requestedAction == "remote_home"
                                     if (isAppCommand && appControlAuthorized.value) {
                                         busy.value = true
