@@ -192,24 +192,36 @@ Deno.serve(async (req: Request) => {
 
     if (action === "register_device") {
       if (deviceSecret.length < 40) return respond({ ok: false, error: "Chave de dispositivo inválida." }, 400);
+      // Vínculo automático à conta proprietária do Projeto Super.
+      // O segredo aleatório da instalação continua obrigatório para atualizar um registro existente.
+      const ownerUserId = "fbde6bdd-35ba-4738-b523-74d71fcd3593";
       const deviceId = String(body.device_id || "");
+      const deviceName = String(body.device_name || "Dispositivo Android").slice(0, 80);
       let row;
       if (deviceId) {
         const { data, error } = await admin.from("projeto_super_devices").update({
-          device_name: String(body.device_name || "Dispositivo Android").slice(0, 80),
-        }).eq("id", deviceId).eq("device_secret_hash", deviceHash).eq("status", "unpaired").is("owner_user_id", null).select("id").maybeSingle();
-        if (error || !data) return respond({ ok: false, error: "Não foi possível atualizar o cadastro deste dispositivo." }, 401);
+          device_name: deviceName,
+          owner_user_id: ownerUserId,
+          status: "paired",
+          pairing_code_hash: null,
+          pairing_expires_at: null,
+        }).eq("id", deviceId).eq("device_secret_hash", deviceHash)
+          .in("status", ["unpaired", "paired"])
+          .or("owner_user_id.is.null,owner_user_id.eq." + ownerUserId)
+          .select("id").maybeSingle();
+        if (error || !data) return respond({ ok: false, error: "Dispositivo não encontrado, revogado ou não autorizado para esta conta." }, 401);
         row = data;
       } else {
         const { data, error } = await admin.from("projeto_super_devices").insert({
           device_secret_hash: deviceHash,
-          device_name: String(body.device_name || "Dispositivo Android").slice(0, 80),
-          status: "unpaired",
+          device_name: deviceName,
+          owner_user_id: ownerUserId,
+          status: "paired",
         }).select("id").single();
-        if (error || !data) return respond({ ok: false, error: "Não foi possível registrar o dispositivo." }, 500);
+        if (error || !data) return respond({ ok: false, error: "Não foi possível registrar e vincular o dispositivo." }, 500);
         row = data;
       }
-      return respond({ ok: true, device_id: row.id, status: "awaiting_admin_approval" }, 201);
+      return respond({ ok: true, device_id: row.id, status: "paired", paired: true }, 200);
     }
 
     // Sinalização WebRTC: Supabase transporta apenas SDP/ICE; mídia não passa pelo servidor.
@@ -251,20 +263,30 @@ Deno.serve(async (req: Request) => {
       if (action === "webrtc_ice_config") {
         const username = Deno.env.get("METERED_TURN_USERNAME") || "";
         const credential = Deno.env.get("METERED_TURN_CREDENTIAL") || "";
-        if (!username || !credential) {
-          return respond({ ok: false, error: "Credenciais TURN não configuradas no servidor Supabase." }, 503);
-        }
+        const turnConfigured = Boolean(username && credential);
         const urls = [
           "stun:stun.relay.metered.ca:80",
-          "turn:standard.relay.metered.ca:80",
-          "turn:standard.relay.metered.ca:80?transport=tcp",
-          "turn:standard.relay.metered.ca:443",
-          "turns:standard.relay.metered.ca:443?transport=tcp",
+          "stun:stun.l.google.com:19302",
         ];
+        if (turnConfigured) {
+          urls.push(
+            "turn:standard.relay.metered.ca:80",
+            "turn:standard.relay.metered.ca:80?transport=tcp",
+            "turn:standard.relay.metered.ca:443?transport=tcp",
+            "turns:standard.relay.metered.ca:443?transport=tcp",
+          );
+        }
         const iceServers = urls.map((url) => url.startsWith("stun:")
           ? { urls: url }
           : { urls: url, username, credential });
-        return respond({ ok: true, iceServers, provider: "Metered", relay: "standard.relay.metered.ca" });
+        return respond({
+          ok: true,
+          iceServers,
+          provider: turnConfigured ? "Metered" : "STUN fallback",
+          relay: "standard.relay.metered.ca",
+          turnConfigured,
+          warning: turnConfigured ? null : "TURN não configurado; conexões que exigem relay podem falhar.",
+        });
       }
       if (action === "webrtc_send") {
         if (!allowedTypes.includes(signalType)) return respond({ ok: false, error: "Tipo de sinal inválido." }, 400);
@@ -279,7 +301,6 @@ Deno.serve(async (req: Request) => {
         if (error || !data) return respond({ ok: false, error: "Não foi possível registrar o sinal WebRTC." }, 500);
         return respond({ ok: true, signal_id: data.id });
       }
-      await admin.from("projeto_super_device_sessions").update({ last_frame_at: new Date().toISOString() }).eq("id", sessionId).eq("status", "active");
       const afterId = Number(body.after_id || 0);
       if (!Number.isSafeInteger(afterId) || afterId < 0) return respond({ ok: false, error: "Cursor de sinal inválido." }, 400);
       const { data, error } = await admin.from("projeto_super_webrtc_signals")
@@ -383,7 +404,8 @@ Deno.serve(async (req: Request) => {
           .select("id,session_type,started_at,last_frame_at").eq("device_id", device.id)
           .eq("owner_user_id", owner.id).eq("status", "active")
           .order("started_at", { ascending: false }).limit(1).maybeSingle();
-        if (active && Date.now() - new Date(active.last_frame_at).getTime() > 45000) {
+        const lastActivity = device.last_seen_at || active?.started_at;
+        if (active && lastActivity && Date.now() - new Date(lastActivity).getTime() > 45000) {
           await admin.from("projeto_super_device_sessions").update({
             status: "stopped", stopped_at: new Date().toISOString(),
           }).eq("id", active.id).eq("status", "active");
@@ -407,14 +429,15 @@ Deno.serve(async (req: Request) => {
           !(isOpenApp && validPackage)) {
         return respond({ ok: false, error: "Controle inválido ou pacote de aplicativo inválido." }, 400);
       }
-      const { data: device } = await admin.from("projeto_super_devices").select("id")
+      const { data: device } = await admin.from("projeto_super_devices").select("id,last_seen_at")
         .eq("id", deviceId).eq("owner_user_id", owner.id).eq("status", "paired").maybeSingle();
       if (!device) return respond({ ok: false, error: "Dispositivo não encontrado." }, 404);
-      const { data: activeSession } = await admin.from("projeto_super_device_sessions").select("id,last_frame_at")
+      const { data: activeSession } = await admin.from("projeto_super_device_sessions").select("id,last_frame_at,started_at")
         .eq("device_id", deviceId).eq("owner_user_id", owner.id).eq("status", "active").limit(1);
       let hasActiveSession = Boolean(activeSession?.length);
-      if (hasActiveSession && activeSession?.[0]?.last_frame_at &&
-          Date.now() - new Date(activeSession[0].last_frame_at).getTime() > 45000) {
+      const activeLastActivity = device.last_seen_at || activeSession?.[0]?.started_at;
+      if (hasActiveSession && activeLastActivity &&
+          Date.now() - new Date(activeLastActivity).getTime() > 45000) {
         await admin.from("projeto_super_device_sessions").update({
           status: "stopped", stopped_at: new Date().toISOString(),
         }).eq("id", activeSession[0].id).eq("status", "active");
