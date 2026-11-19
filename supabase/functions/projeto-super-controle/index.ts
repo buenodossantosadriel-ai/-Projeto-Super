@@ -496,7 +496,6 @@ Deno.serve(async (req: Request) => {
       const isOpenApp = requestedAction.startsWith("open_app:");
       const appPackage = isOpenApp ? requestedAction.slice("open_app:".length) : "";
       const validPackage = /^[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)+$/.test(appPackage) && appPackage.length <= 180;
-      const isRemoteNavigation = requestedAction === "remote_back" || requestedAction === "remote_home";
       const isTap = /^tap:(?:[0-9]|[1-9][0-9]{1,2}|1000):(?:[0-9]|[1-9][0-9]{1,2}|1000)$/.test(requestedAction);
       const isTypeText = requestedAction.startsWith("type_text:") &&
         requestedAction.length > "type_text:".length &&
@@ -533,7 +532,7 @@ Deno.serve(async (req: Request) => {
       // Controle de aplicativos é independente de transmissão de tela.
       // O dispositivo ainda precisa estar vinculado, com autorização geral ativa
       // e AccessibilityService habilitado pelo próprio usuário no Android.
-      const isRemoteCommand = isRemoteNavigation || isTap || isTypeText || (isOpenApp && validPackage);
+      const isRemoteCommand = isTap || isTypeText || (isOpenApp && validPackage);
       if (requestedAction !== "stop_session" && hasActiveSession && !isRemoteCommand) {
         return respond({ ok: false, error: "Encerre a sessão atual antes de iniciar outra." }, 409);
       }
