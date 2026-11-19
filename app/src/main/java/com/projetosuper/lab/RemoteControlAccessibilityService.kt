@@ -104,7 +104,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                         .addCategory(Intent.CATEGORY_LAUNCHER)
                         .setClassName(info.packageName, info.name)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-                    withContext(Dispatchers.Main) { startActivity(launch) }
+                    withContext(Dispatchers.Main) { RemoteDisplayLauncher.start(this@RemoteControlAccessibilityService, launch) }
                 }
                 action.startsWith("type_text:") -> {
                     val value = action.substringAfter("type_text:")
@@ -143,7 +143,10 @@ class RemoteControlAccessibilityService : AccessibilityService() {
 
     fun tap(x: Float, y: Float): Boolean {
         val path = Path().apply { moveTo(x, y) }
+        val displayId = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
+            .getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.DEFAULT_DISPLAY)
         val gesture = GestureDescription.Builder()
+            .setDisplayId(displayId)
             .addStroke(GestureDescription.StrokeDescription(path, 0, 80))
             .build()
         return dispatchGesture(gesture, null, null)
@@ -151,7 +154,10 @@ class RemoteControlAccessibilityService : AccessibilityService() {
 
     fun swipe(x1: Float, y1: Float, x2: Float, y2: Float, durationMs: Long): Boolean {
         val path = Path().apply { moveTo(x1, y1); lineTo(x2, y2) }
+        val displayId = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
+            .getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.DEFAULT_DISPLAY)
         val gesture = GestureDescription.Builder()
+            .setDisplayId(displayId)
             .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs.coerceIn(100, 1500)))
             .build()
         return dispatchGesture(gesture, null, null)
