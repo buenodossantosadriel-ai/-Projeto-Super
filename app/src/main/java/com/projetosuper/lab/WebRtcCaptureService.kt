@@ -143,11 +143,17 @@ class WebRtcCaptureService : LifecycleService() {
             val urlList = if (urls != null) {
                 (0 until urls.length()).map { urls.getString(it) }
             } else listOf(item.getString("urls"))
+            val username = item.optString("username").takeIf { it.isNotBlank() }
+            val credential = item.optString("credential").takeIf { it.isNotBlank() }
             urlList.map { url ->
-                PeerConnection.IceServer.builder(url)
-                    .setUsername(item.optString("username"))
-                    .setPassword(item.optString("credential"))
-                    .createIceServer()
+                val builder = PeerConnection.IceServer.builder(url)
+                if (!url.startsWith("stun:", ignoreCase = true)) {
+                    check(!username.isNullOrBlank() && !credential.isNullOrBlank()) {
+                        "Credenciais TURN incompletas para $url."
+                    }
+                    builder.setUsername(username).setPassword(credential)
+                }
+                builder.createIceServer()
             }
         }
         check(iceServers.isNotEmpty()) { "A lista ICE está vazia." }
@@ -215,7 +221,9 @@ class WebRtcCaptureService : LifecycleService() {
             ) stopCapture()
         }
         override fun onIceConnectionReceivingChange(receiving: Boolean) {}
-        override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {}
+        override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {
+            android.util.Log.i("ProjetoSuperWebRTC", "ICE gathering=$state session=$sessionId")
+        }
         override fun onIceCandidate(candidate: IceCandidate) {
             val payload = JSONObject()
                 .put("candidate", candidate.sdp)
