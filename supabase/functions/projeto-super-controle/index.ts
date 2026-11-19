@@ -425,15 +425,42 @@ Deno.serve(async (req: Request) => {
         .select("id,device_name,status,last_seen_at,created_at")
         .eq("owner_user_id", owner.id).order("created_at", { ascending: false });
       if (error) return respond({ ok: false, error: "Falha ao listar dispositivos." }, 500);
+      const rows = data || [];
+      const deviceIds = rows.map((device) => device.id);
+      if (!deviceIds.length) return respond({ ok: true, devices: [] });
+
+      // Consultas em lote: evita N+1 requests quando há vários aparelhos vinculados.
+      const [appsResult, sessionsResult] = await Promise.all([
+        admin.from("projeto_super_device_apps")
+          .select("device_id,package_name,app_label,updated_at")
+          .in("device_id", deviceIds).order("app_label", { ascending: true }),
+        admin.from("projeto_super_device_sessions")
+          .select("id,device_id,session_type,started_at,last_frame_at")
+          .in("device_id", deviceIds).eq("owner_user_id", owner.id).eq("status", "active")
+          .order("started_at", { ascending: false }),
+      ]);
+      if (appsResult.error || sessionsResult.error) {
+        return respond({ ok: false, error: "Falha ao carregar aplicativos ou sessões dos dispositivos." }, 500);
+      }
+      const appsByDevice = new Map<string, unknown[]>();
+      for (const app of appsResult.data || []) {
+        const list = appsByDevice.get(app.device_id) || [];
+        list.push({
+          package_name: app.package_name,
+          app_label: app.app_label,
+          updated_at: app.updated_at,
+        });
+        appsByDevice.set(app.device_id, list);
+      }
+      const sessionsByDevice = new Map<string, any>();
+      for (const session of sessionsResult.data || []) {
+        if (!sessionsByDevice.has(session.device_id)) sessionsByDevice.set(session.device_id, session);
+      }
+
       const devices = [];
-      for (const device of data || []) {
-        const { data: installedApps } = await admin.from("projeto_super_device_apps")
-          .select("package_name,app_label,updated_at").eq("device_id", device.id)
-          .order("app_label", { ascending: true });
-        const { data: active } = await admin.from("projeto_super_device_sessions")
-          .select("id,session_type,started_at,last_frame_at").eq("device_id", device.id)
-          .eq("owner_user_id", owner.id).eq("status", "active")
-          .order("started_at", { ascending: false }).limit(1).maybeSingle();
+      for (const device of rows) {
+        const active = sessionsByDevice.get(device.id) || null;
+        const installedApps = appsByDevice.get(device.id) || [];
         const lastActivity = device.last_seen_at || active?.started_at;
         if (active && lastActivity && Date.now() - new Date(lastActivity).getTime() > 45000) {
           await admin.from("projeto_super_device_sessions").update({
@@ -441,9 +468,9 @@ Deno.serve(async (req: Request) => {
           }).eq("id", active.id).eq("status", "active");
           await clearSessionFrames(admin, [active.id]);
           await clearAudioChunks(admin, [active.id], "live");
-          devices.push({ ...device, active_session: null, apps: installedApps || [] });
+          devices.push({ ...device, active_session: null, apps: installedApps });
         } else {
-          devices.push({ ...device, active_session: active || null, apps: installedApps || [] });
+          devices.push({ ...device, active_session: active, apps: installedApps });
         }
       }
       return respond({ ok: true, devices });
@@ -561,16 +588,25 @@ Deno.serve(async (req: Request) => {
       const { data: ownedDevice } = await admin.from("projeto_super_devices").select("id")
         .eq("id", deviceId).eq("owner_user_id", owner.id).maybeSingle();
       if (!ownedDevice) return respond({ ok: false, error: "Dispositivo não encontrado." }, 404);
-      const { data: sessions } = await admin.from("projeto_super_device_sessions").select("id").eq("device_id", deviceId);
+      const { data: sessions, error: sessionError } = await admin.from("projeto_super_device_sessions")
+        .select("id").eq("device_id", deviceId);
+      if (sessionError) return respond({ ok: false, error: "Não foi possível localizar as sessões do aparelho." }, 500);
       const sessionIds = (sessions || []).map((session) => session.id);
-      await admin.from("projeto_super_device_sessions").update({
-        status: "stopped", stopped_at: new Date().toISOString(),
-      }).eq("device_id", deviceId).eq("status", "active");
+      const stoppedAt = new Date().toISOString();
+      const [stopResult, pendingResult, appsResult] = await Promise.all([
+        admin.from("projeto_super_device_sessions").update({ status: "stopped", stopped_at: stoppedAt })
+          .eq("device_id", deviceId).eq("status", "active"),
+        admin.from("projeto_super_control_requests").delete().eq("device_id", deviceId).eq("status", "pending"),
+        admin.from("projeto_super_device_apps").delete().eq("device_id", deviceId),
+      ]);
+      if (stopResult.error || pendingResult.error || appsResult.error) {
+        return respond({ ok: false, error: "Não foi possível concluir o cancelamento do vínculo. Tente novamente." }, 500);
+      }
       await clearSessionFrames(admin, sessionIds);
       await clearAudioChunks(admin, sessionIds);
       const { error } = await admin.from("projeto_super_devices").update({ status: "revoked" })
         .eq("id", deviceId).eq("owner_user_id", owner.id);
-      return error ? respond({ ok: false, error: "Falha ao revogar dispositivo." }, 500) : respond({ ok: true });
+      return error ? respond({ ok: false, error: "Falha ao cancelar o vínculo." }, 500) : respond({ ok: true });
     }
 
     return respond({ ok: false, error: "Ação desconhecida." }, 400);
