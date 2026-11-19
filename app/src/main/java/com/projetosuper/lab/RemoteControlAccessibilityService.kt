@@ -102,6 +102,9 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                         .setClassName(info.packageName, info.name)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
                     withContext(Dispatchers.Main) { RemoteDisplayLauncher.start(this@RemoteControlAccessibilityService, launch) }
+                    check(waitForAppOnDisplay(packageName)) {
+                        "O comando foi recebido, mas o Android não confirmou que o aplicativo apareceu no display virtual."
+                    }
                     ControlApi.decide(this, requestId, true)
                     decided = true
                 }
@@ -131,6 +134,32 @@ class RemoteControlAccessibilityService : AccessibilityService() {
             }
         }
     }
+
+    /**
+     * Só confirma a abertura depois que uma janela do pacote solicitado aparece
+     * no display virtual. Isso evita sinalizar sucesso apenas porque startActivity retornou.
+     */
+    private suspend fun waitForAppOnDisplay(targetPackage: String): Boolean =
+        withContext(Dispatchers.Main) {
+            val displayId = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
+                .getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.INVALID_DISPLAY)
+            if (displayId == android.view.Display.INVALID_DISPLAY) return@withContext false
+
+            repeat(20) {
+                val windows = getWindowsOnAllDisplays().get(displayId).orEmpty()
+                val targetVisible = windows.any { window ->
+                    val root = window.root ?: return@any false
+                    try {
+                        root.packageName?.toString() == targetPackage
+                    } finally {
+                        root.recycle()
+                    }
+                }
+                if (targetVisible) return@withContext true
+                delay(250)
+            }
+            false
+        }
 
     private fun packageNameOfSelf(): String = packageName
 
