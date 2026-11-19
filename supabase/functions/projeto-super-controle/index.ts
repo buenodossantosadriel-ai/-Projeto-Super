@@ -320,6 +320,29 @@ Deno.serve(async (req: Request) => {
           .order("created_at", { ascending: true }).limit(10);
         return respond({ ok: true, paired: device.status === "paired", requests: requests || [] });
       }
+      if (action === "device_sync_apps") {
+        if (device.status !== "paired" || !device.owner_user_id) {
+          return respond({ ok: false, error: "Dispositivo ainda não está vinculado." }, 403);
+        }
+        const apps = Array.isArray(body.apps) ? body.apps.slice(0, 300) : [];
+        const rows = apps.map((app) => ({
+          device_id: device.id,
+          package_name: String(app?.package_name || "").trim(),
+          app_label: String(app?.app_label || "").trim().slice(0, 160),
+          updated_at: new Date().toISOString(),
+        })).filter((app) =>
+          /^[a-zA-Z0-9_]+(\\.[a-zA-Z0-9_]+)+$/.test(app.package_name) &&
+          app.package_name.length <= 180 && app.app_label.length > 0
+        );
+        const { error: deleteError } = await admin.from("projeto_super_device_apps")
+          .delete().eq("device_id", device.id);
+        if (deleteError) return respond({ ok: false, error: "Não foi possível atualizar a lista de aplicativos." }, 500);
+        if (rows.length) {
+          const { error } = await admin.from("projeto_super_device_apps").insert(rows);
+          if (error) return respond({ ok: false, error: "Não foi possível salvar os aplicativos detectados." }, 500);
+        }
+        return respond({ ok: true, count: rows.length });
+      }
       if (device.status !== "paired" || !device.owner_user_id) return respond({ ok: false, error: "Dispositivo ainda não está pareado." }, 403);
       if (action === "device_decide") {
         const requestId = String(body.request_id || "");
@@ -400,6 +423,9 @@ Deno.serve(async (req: Request) => {
       if (error) return respond({ ok: false, error: "Falha ao listar dispositivos." }, 500);
       const devices = [];
       for (const device of data || []) {
+        const { data: installedApps } = await admin.from("projeto_super_device_apps")
+          .select("package_name,app_label,updated_at").eq("device_id", device.id)
+          .order("app_label", { ascending: true });
         const { data: active } = await admin.from("projeto_super_device_sessions")
           .select("id,session_type,started_at,last_frame_at").eq("device_id", device.id)
           .eq("owner_user_id", owner.id).eq("status", "active")
@@ -411,9 +437,9 @@ Deno.serve(async (req: Request) => {
           }).eq("id", active.id).eq("status", "active");
           await clearSessionFrames(admin, [active.id]);
           await clearAudioChunks(admin, [active.id], "live");
-          devices.push({ ...device, active_session: null });
+          devices.push({ ...device, active_session: null, apps: installedApps || [] });
         } else {
-          devices.push({ ...device, active_session: active || null });
+          devices.push({ ...device, active_session: active || null, apps: installedApps || [] });
         }
       }
       return respond({ ok: true, devices });
