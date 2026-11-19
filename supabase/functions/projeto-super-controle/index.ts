@@ -311,7 +311,7 @@ Deno.serve(async (req: Request) => {
       return respond({ ok: true, signals: data || [], next_after_id: data?.length ? data[data.length - 1].id : afterId });
     }
 
-    if (action === "device_poll" || action === "device_decide" || action === "start_session" || action === "stop_session") {
+    if (action === "device_poll" || action === "device_sync_apps" || action === "device_decide" || action === "start_session" || action === "stop_session") {
       const device = await getDevice(String(body.device_id || ""));
       if (!device) return respond({ ok: false, error: "Chave do dispositivo inválida." }, 401);
       if (action === "device_poll") {
