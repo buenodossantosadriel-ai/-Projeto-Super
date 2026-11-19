@@ -301,7 +301,7 @@ class WebRtcCaptureService : LifecycleService() {
                         }
                     }
                 } catch (error: Exception) {
-                    android.util.Log.w("ProjetoSuperWebRTC", "Polling de sinalização: \${error.message}")
+                    android.util.Log.w("ProjetoSuperWebRTC", "Polling de sinalização: ${error.message}")
                 }
                 delay(700)
             }
