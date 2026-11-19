@@ -5,6 +5,7 @@ import android.accessibilityservice.GestureDescription
 import android.content.Intent
 import android.graphics.Path
 import android.os.Bundle
+import android.os.Build
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import kotlinx.coroutines.CoroutineScope
@@ -143,6 +144,8 @@ class RemoteControlAccessibilityService : AccessibilityService() {
 
     fun tap(x: Float, y: Float): Boolean {
         val path = Path().apply { moveTo(x, y) }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
         val displayId = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
             .getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.DEFAULT_DISPLAY)
         val gesture = GestureDescription.Builder()
@@ -174,7 +177,16 @@ class RemoteControlAccessibilityService : AccessibilityService() {
     /** Insere texto somente no campo que está focado naquele instante. */
     fun setFocusedText(value: String): Boolean {
         if (value.isBlank() || value.length > 2000) return false
-        val root = rootInActiveWindow ?: return false
+        val displayId = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
+            .getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.DEFAULT_DISPLAY)
+        val root = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            displayId != android.view.Display.DEFAULT_DISPLAY) {
+            val windows = getWindowsOnAllDisplays().get(displayId).orEmpty()
+            val targetWindow = windows.firstOrNull { it.isFocused } ?: windows.firstOrNull { it.isActive } ?: windows.firstOrNull()
+            targetWindow?.root
+        } else {
+            rootInActiveWindow
+        } ?: return false
         try {
             val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
                 ?: findFocusedEditable(root)
