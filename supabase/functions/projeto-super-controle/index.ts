@@ -373,7 +373,10 @@ Deno.serve(async (req: Request) => {
           return respond({ ok: true, decision, opened_app_package: packageName });
         }
         if (request.action === "remote_back" || request.action === "remote_home" ||
-            /^tap:(?:[0-9]|[1-9][0-9]{1,2}|1000):(?:[0-9]|[1-9][0-9]{1,2}|1000)$/.test(request.action)) {
+            /^tap:(?:[0-9]|[1-9][0-9]{1,2}|1000):(?:[0-9]|[1-9][0-9]{1,2}|1000)$/.test(request.action) ||
+            (request.action.startsWith("type_text:") &&
+              request.action.length > "type_text:".length &&
+              request.action.length <= "type_text:".length + 2000)) {
           return respond({ ok: true, decision, remote_command: request.action });
         }
         const sessionType = request.action;
@@ -509,6 +512,9 @@ Deno.serve(async (req: Request) => {
       }
       if (requestedAction === "stop_session" && !hasActiveSession) {
         return respond({ ok: false, error: "Não há sessão ativa para encerrar." }, 409);
+      }
+      if (isTypeText && (!hasActiveSession || activeSession?.[0]?.session_type !== "screen_share")) {
+        return respond({ ok: false, error: "Inicie e mantenha o compartilhamento de tela antes de enviar texto remoto." }, 409);
       }
       const isRemoteCommand = isRemoteNavigation || isTap || isTypeText;
       if (requestedAction !== "stop_session" && hasActiveSession &&
