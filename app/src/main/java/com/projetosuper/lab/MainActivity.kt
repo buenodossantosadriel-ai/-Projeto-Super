@@ -1,6 +1,8 @@
 package com.projetosuper.lab
 
 import android.Manifest
+import android.content.ComponentName
+import android.provider.Settings.Secure
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -199,6 +201,12 @@ class MainActivity : ComponentActivity() {
             val notificationsGranted = Build.VERSION.SDK_INT < 33 ||
                 ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
+            val accessibilityComponent = ComponentName(context, RemoteControlAccessibilityService::class.java)
+            val accessibilityEnabled = Secure.getString(
+                context.contentResolver,
+                Secure.ENABLED_ACCESSIBILITY_SERVICES
+            )?.split(":")?.contains(accessibilityComponent.flattenToString()) == true
+
             MaterialTheme {
                 Surface(Modifier.fillMaxSize()) {
                     LazyColumn(
@@ -235,6 +243,16 @@ class MainActivity : ComponentActivity() {
                             PermissionRow("Câmera", cameraGranted)
                             PermissionRow("Microfone", microphoneGranted)
                             PermissionRow("Notificações", notificationsGranted)
+                            PermissionRow("Acessibilidade para controle remoto", accessibilityEnabled)
+                            Text(
+                                "O controle de toques e navegação só funciona depois de ativar este serviço manualmente. " +
+                                    "Ele não lê o conteúdo da tela; executa apenas gestos e comandos globais solicitados.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Button(
+                                onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text(if (accessibilityEnabled) "Revisar serviço de acessibilidade" else "Ativar controle remoto nas configurações") }
                             Button(
                                 onClick = {
                                     val settingsIntent = Intent(
