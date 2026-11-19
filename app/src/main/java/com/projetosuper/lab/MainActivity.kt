@@ -258,7 +258,8 @@ class MainActivity : ComponentActivity() {
                                         requestedAction.startsWith("tap:") ||
                                         requestedAction.startsWith("type_text:") ||
                                         requestedAction == "remote_back" || requestedAction == "remote_home"
-                                    if (isAppCommand && appControlAuthorized.value) {
+                                    if (isAppCommand && appControlAuthorized.value &&
+                                        RemoteControlAccessibilityService.activeInstance == null) {
                                         busy.value = true
                                         scope.launch {
                                             try {
