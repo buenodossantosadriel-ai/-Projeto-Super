@@ -80,7 +80,7 @@ async function startWebRtcViewer(sessionId,video){
   if(!Array.isArray(iceConfig.iceServers)||!iceConfig.iceServers.length)throw Error("A lista ICE retornada está vazia.");
  }catch(e){rtcStatus(sessionId,"Não foi possível carregar STUN/TURN: "+e.message,true);return}
  const pc=new RTCPeerConnection({iceServers:iceConfig.iceServers});
- const state={pc,video,afterId:0,closed:false,remoteReady:false,pendingCandidates:[],timer:null,polling:false,answering:false,receivedTrack:false};
+ const state={pc,video,afterId:0,closed:false,remoteReady:false,pendingCandidates:[],timer:null,polling:false,answering:false,receivedTrack:false,turnConfigured:iceConfig.turnConfigured!==false};
  webRtcViewers.set(sessionId,state);
  video.autoplay=true;video.playsInline=true;video.muted=true;
  pc.ontrack=async event=>{
@@ -98,8 +98,8 @@ async function startWebRtcViewer(sessionId,video){
  pc.onicecandidate=event=>{if(event.candidate&&!state.closed)sendRtcSignal(sessionId,"candidate",event.candidate.toJSON()).catch(e=>rtcStatus(sessionId,"Falha ao enviar candidato ICE: "+e.message,true))};
  pc.onicecandidateerror=event=>rtcStatus(sessionId,"Erro ICE "+(event.errorCode||"")+" · "+(event.errorText||"falha ao obter rota direta"),true);
  pc.onicegatheringstatechange=()=>{if(pc.iceGatheringState==="complete")rtcStatus(sessionId,"Candidatos ICE locais coletados; verificando rota direta…")};
- pc.onconnectionstatechange=()=>{const s=pc.connectionState;if(s==="connected")rtcStatus(sessionId,"Conectado diretamente · WebRTC ativo.");else if(s==="connecting")rtcStatus(sessionId,"Negociando conexão direta…");else if(s==="failed")rtcStatus(sessionId,"ICE/DTLS falhou: não foi possível estabelecer uma rota direta ou via TURN. Verifique a rede e as credenciais TURN.",true);else if(s==="disconnected")rtcStatus(sessionId,"Conexão interrompida; tentando recuperar…");else if(s==="closed")rtcStatus(sessionId,"Conexão encerrada.")};
- pc.oniceconnectionstatechange=()=>{const s=pc.iceConnectionState;if(s==="checking")rtcStatus(sessionId,"Testando candidatos ICE diretos…");else if(s==="connected"||s==="completed")rtcStatus(sessionId,"Rota ICE direta estabelecida; aguardando quadros de vídeo…");else if(s==="failed")rtcStatus(sessionId,"ICE falhou. Não foi possível estabelecer uma rota direta ou via TURN; verifique a configuração de rede.",true);else if(s==="disconnected")rtcStatus(sessionId,"ICE desconectado; tentando recuperar…")};
+ pc.onconnectionstatechange=()=>{const s=pc.connectionState;if(s==="connected")rtcStatus(sessionId,"Conectado diretamente · WebRTC ativo.");else if(s==="connecting")rtcStatus(sessionId,"Negociando conexão direta…");else if(s==="failed")rtcStatus(sessionId,state.turnConfigured?"ICE/DTLS falhou: não foi possível estabelecer uma rota direta ou via TURN. Verifique a rede e as credenciais TURN.":"ICE/DTLS falhou: TURN não está configurado; configure as credenciais Metered e tente novamente.",true);else if(s==="disconnected")rtcStatus(sessionId,"Conexão interrompida; tentando recuperar…");else if(s==="closed")rtcStatus(sessionId,"Conexão encerrada.")};
+ pc.oniceconnectionstatechange=()=>{const s=pc.iceConnectionState;if(s==="checking")rtcStatus(sessionId,"Testando candidatos ICE diretos…");else if(s==="connected"||s==="completed")rtcStatus(sessionId,"Rota ICE direta estabelecida; aguardando quadros de vídeo…");else if(s==="failed")rtcStatus(sessionId,state.turnConfigured?"ICE falhou. Não foi possível estabelecer uma rota direta ou via TURN; verifique a configuração de rede.":"ICE falhou e não há TURN configurado. Configure as credenciais Metered para permitir relay.",true);else if(s==="disconnected")rtcStatus(sessionId,"ICE desconectado; tentando recuperar…")};
  const addCandidate=async payload=>{if(!payload?.candidate)return;const candidate=new RTCIceCandidate({candidate:payload.candidate,sdpMid:payload.sdpMid??"0",sdpMLineIndex:payload.sdpMLineIndex??0});if(!state.remoteReady)state.pendingCandidates.push(candidate);else await pc.addIceCandidate(candidate)};
  const applyOffer=async payload=>{
   if(state.answering||pc.remoteDescription||!payload?.sdp)return;
@@ -129,7 +129,7 @@ async function startWebRtcViewer(sessionId,video){
   }catch(e){rtcStatus(sessionId,"Sinalização: "+e.message,true)}
   finally{state.polling=false;if(!state.closed)state.timer=setTimeout(poll,650)}
  };
- rtcStatus(sessionId,"Aguardando oferta WebRTC do Android…");
+ rtcStatus(sessionId,state.turnConfigured?"Aguardando oferta WebRTC do Android…":"TURN não configurado: tentando conexão STUN direta; redes com NAT restritivo podem falhar.");
  poll();
 }
 
