@@ -40,6 +40,8 @@ import org.webrtc.SurfaceTextureHelper
 import org.webrtc.VideoCapturer
 import org.webrtc.VideoSource
 import org.webrtc.VideoTrack
+import org.webrtc.VideoSink
+import java.util.concurrent.atomic.AtomicLong
 
 /** WebRTC media uses Metered STUN/TURN; Supabase carries signaling only. */
 class WebRtcCaptureService : LifecycleService() {
@@ -76,6 +78,8 @@ class WebRtcCaptureService : LifecycleService() {
     private var textureHelper: SurfaceTextureHelper? = null
     private var videoSource: VideoSource? = null
     private var videoTrack: VideoTrack? = null
+    private var frameSink: VideoSink? = null
+    private val capturedFrameCount = AtomicLong(0)
     private var capturer: VideoCapturer? = null
     @Volatile private var shuttingDown = false
     private var lastSignalId = 0L
@@ -171,6 +175,14 @@ class WebRtcCaptureService : LifecycleService() {
         capturer!!.initialize(textureHelper, applicationContext, videoSource!!.capturerObserver)
         videoTrack = factory!!.createVideoTrack("super-video-$sessionId", videoSource)
         videoTrack!!.setEnabled(true)
+        // Conta quadros que realmente saem da captura e chegam à faixa WebRTC.
+        frameSink = VideoSink { _ ->
+            val total = capturedFrameCount.incrementAndGet()
+            if (total == 1L || total % 60L == 0L) {
+                android.util.Log.i("ProjetoSuperWebRTC", "Quadros capturados=$total modo=$mode sessão=$sessionId")
+            }
+        }
+        videoTrack!!.addSink(frameSink)
         peerConnection!!.addTrack(videoTrack, listOf("super-stream-$sessionId"))
         // Vincula a faixa ao PeerConnection antes de iniciar a captura dos primeiros quadros.
         if (mode == "camera") {
@@ -399,6 +411,9 @@ class WebRtcCaptureService : LifecycleService() {
         try { capturer?.stopCapture() } catch (_: Exception) {}
         capturer?.dispose()
         capturer = null
+        frameSink?.let { sink -> try { videoTrack?.removeSink(sink) } catch (_: Exception) {} }
+        frameSink = null
+        android.util.Log.i("ProjetoSuperWebRTC", "Encerrando captura: total de quadros=$capturedFrameCount modo=$mode sessão=$sessionId")
         videoTrack?.dispose()
         videoTrack = null
         peerConnection?.close()
