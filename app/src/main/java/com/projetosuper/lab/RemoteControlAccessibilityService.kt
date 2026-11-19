@@ -128,9 +128,16 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                     decided = true
                 }
             }
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            android.util.Log.e(
+                "ProjetoSuperControl",
+                "Falha ao executar comando remoto '$action': ${error.message}",
+                error
+            )
             if (!decided) {
-                try { ControlApi.decide(this, requestId, false) } catch (_: Exception) {}
+                try { ControlApi.decide(this, requestId, false) } catch (ackError: Exception) {
+                    android.util.Log.e("ProjetoSuperControl", "Falha ao informar rejeição do comando.", ackError)
+                }
             }
         }
     }
