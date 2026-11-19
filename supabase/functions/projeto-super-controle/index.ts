@@ -516,7 +516,7 @@ Deno.serve(async (req: Request) => {
       if (isTypeText && (!hasActiveSession || activeSession?.[0]?.session_type !== "screen_share")) {
         return respond({ ok: false, error: "Inicie e mantenha o compartilhamento de tela antes de enviar texto remoto." }, 409);
       }
-      const isRemoteCommand = isRemoteNavigation || isTap || isTypeText;
+      const isRemoteCommand = isRemoteNavigation || isTap || isTypeText || (isOpenApp && validPackage);
       if (requestedAction !== "stop_session" && hasActiveSession &&
           !(isRemoteCommand && activeSession?.[0]?.session_type === "screen_share")) {
         return respond({ ok: false, error: "Encerre a sessão atual antes de iniciar outra." }, 409);
