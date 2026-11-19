@@ -1,5 +1,5 @@
 name: Android APK
-# Rebuild the isolated-display branch after remote-control safety fixes
+# Build the latest isolated-display authorization and remote-launch changes
 
 on:
   workflow_dispatch:
