@@ -141,6 +141,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
      */
     private suspend fun waitForAppOnDisplay(targetPackage: String): Boolean =
         withContext(Dispatchers.Main) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return@withContext false
             val displayId = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
                 .getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.INVALID_DISPLAY)
             if (displayId == android.view.Display.INVALID_DISPLAY) return@withContext false
