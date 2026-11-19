@@ -121,8 +121,8 @@ class MainActivity : ComponentActivity() {
                                 val sessionId = response.optString("session_id")
                                 check(sessionId.isNotBlank()) { "O servidor não confirmou a sessão de tela." }
                                 createdSessionId = sessionId
-                                val start = Intent(context, WebRtcCaptureService::class.java)
-                                    .setAction(WebRtcCaptureService.ACTION_START_SCREEN)
+                                val start = Intent(context, ScreenCaptureService::class.java)
+                                    .setAction(ScreenCaptureService.ACTION_START)
                                     .putExtra(WebRtcCaptureService.EXTRA_SESSION_ID, sessionId)
                                     .putExtra(WebRtcCaptureService.EXTRA_RESULT_CODE, result.resultCode)
                                     .putExtra(WebRtcCaptureService.EXTRA_RESULT_DATA, result.data)
@@ -195,6 +195,7 @@ class MainActivity : ComponentActivity() {
                                         try {
                                             ControlApi.decide(context, candidate.optString("id"), true)
                                             context.startService(Intent(context, WebRtcCaptureService::class.java).setAction(WebRtcCaptureService.ACTION_STOP))
+                                            context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
                                             context.startService(Intent(context, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP))
                                         } catch (error: Exception) {
                                             deviceError.value = error.message ?: "Não foi possível encerrar a sessão."
@@ -257,6 +258,7 @@ class MainActivity : ComponentActivity() {
                             Button(
                                 onClick = {
                                     context.startService(Intent(context, WebRtcCaptureService::class.java).setAction(WebRtcCaptureService.ACTION_STOP))
+                                    context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
                                     context.startService(Intent(context, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP))
                                 },
                                 modifier = Modifier.fillMaxWidth()
