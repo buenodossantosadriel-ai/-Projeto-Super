@@ -274,10 +274,12 @@ class MainActivity : ComponentActivity() {
                                         }
                                         break
                                     }
+                                    val needsUiDecision = isAppCommand &&
+                                        (!appControlAuthorized.value || RemoteControlAccessibilityService.activeInstance == null)
                                     if (requestedAction in listOf(
                                             "camera_front", "camera_back", "screen_share",
                                             "microphone_live", "microphone_record"
-                                        ) || isAppCommand) {
+                                        ) || needsUiDecision) {
                                         selected = candidate
                                         break
                                     }
