@@ -413,9 +413,9 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 },
-                                enabled = !appControlAuthorized.value && !busy.value,
+                                enabled = !busy.value,
                                 modifier = Modifier.fillMaxWidth()
-                            ) { Text(if (appControlAuthorized.value) "Autorização geral ativa" else "Autorizar acesso remoto e preparar ambiente") }
+                            ) { Text(if (appControlAuthorized.value) "Preparar/repreparar ambiente remoto" else "Autorizar acesso remoto e preparar ambiente") }
                             Button(
                                 onClick = {
                                     appControlAuthorized.value = false
