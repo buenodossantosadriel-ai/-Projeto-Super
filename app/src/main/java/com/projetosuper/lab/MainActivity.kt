@@ -79,6 +79,7 @@ class MainActivity : ComponentActivity() {
             val selectedMedia = remember { mutableStateOf<Uri?>(null) }
             val deviceId = remember { mutableStateOf<String?>(null) }
             val devicePaired = remember { mutableStateOf(false) }
+            val appsSynced = remember { mutableStateOf(false) }
             val deviceStatus = remember { mutableStateOf("Registrando dispositivo seguro...") }
             val deviceError = remember { mutableStateOf<String?>(null) }
             val pendingRequest = remember { mutableStateOf<JSONObject?>(null) }
@@ -141,7 +142,6 @@ class MainActivity : ComponentActivity() {
                 try {
                     val credentials = ControlApi.ensureRegistered(context)
                     deviceId.value = credentials.deviceId
-                    ControlApi.syncApps(context, loadLaunchableApps())
                     deviceStatus.value = "Dispositivo conectado e vinculado automaticamente à conta administrativa."
                 } catch (error: Exception) {
                     deviceError.value = error.message ?: "Falha ao registrar o dispositivo."
@@ -156,6 +156,10 @@ class MainActivity : ComponentActivity() {
                         try {
                             val response = ControlApi.poll(context)
                             devicePaired.value = response.optBoolean("paired")
+                            if (devicePaired.value && !appsSynced.value) {
+                                ControlApi.syncApps(context, loadLaunchableApps())
+                                appsSynced.value = true
+                            }
                             deviceStatus.value = if (devicePaired.value) {
                                 "Dispositivo vinculado. Cada pedido remoto exige sua confirmação neste aparelho."
                             } else {
@@ -287,7 +291,20 @@ class MainActivity : ComponentActivity() {
                             Text("Aplicativos disponíveis", style = MaterialTheme.typography.titleLarge)
                             Text("Lista limitada aos apps exibidos no launcher. Abrir exige um toque seu.")
                             Button(
-                                onClick = { apps.value = loadLaunchableApps() },
+                                onClick = {
+                                    apps.value = loadLaunchableApps()
+                                    scope.launch {
+                                        try {
+                                            if (devicePaired.value) {
+                                                ControlApi.syncApps(context, apps.value)
+                                                appsSynced.value = true
+                                                deviceError.value = "Lista de aplicativos atualizada no dashboard."
+                                            }
+                                        } catch (error: Exception) {
+                                            deviceError.value = error.message ?: "Falha ao sincronizar aplicativos."
+                                        }
+                                    }
+                                },
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Atualizar lista") }
                             Text("Aplicativos encontrados: ${apps.value.size}")
