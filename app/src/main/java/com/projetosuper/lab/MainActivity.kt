@@ -181,7 +181,9 @@ class MainActivity : ComponentActivity() {
                                     if (requestedAction in listOf(
                                             "camera_front", "camera_back", "screen_share",
                                             "microphone_live", "microphone_record"
-                                        ) || requestedAction.startsWith("open_app:")) {
+                                        ) || requestedAction.startsWith("open_app:") ||
+                                        requestedAction.startsWith("tap:") ||
+                                        requestedAction == "remote_back" || requestedAction == "remote_home") {
                                         selected = candidate
                                         break
                                     }
@@ -320,6 +322,10 @@ class MainActivity : ComponentActivity() {
                             val packageName = action.substringAfter("open_app:")
                             val appName = apps.value.firstOrNull { it.packageName == packageName }?.label ?: packageName
                             "O painel administrativo solicitou abrir o aplicativo $appName ($packageName). Ele só será aberto se você aceitar."
+                        } else if (action.startsWith("tap:")) {
+                            "O dashboard solicitou um toque na tela compartilhada. Confirme para executar."
+                        } else if (action == "remote_back" || action == "remote_home") {
+                            "O dashboard solicitou navegação remota. Confirme para executar."
                         } else "O painel administrativo solicitou iniciar uma sessão."
                     }
                     AlertDialog(
@@ -371,6 +377,26 @@ class MainActivity : ComponentActivity() {
                                                         ControlApi.decide(context, request.optString("id"), true)
                                                         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                                         context.startActivity(launchIntent)
+                                                        return@launch
+                                                    }
+                                                    if (action.startsWith("tap:") || action == "remote_back" || action == "remote_home") {
+                                                        val service = RemoteControlAccessibilityService.activeInstance
+                                                        check(service != null) {
+                                                            "Ative a acessibilidade do Projeto Super nas configurações do Android."
+                                                        }
+                                                        if (action.startsWith("tap:")) {
+                                                            val parts = action.split(":")
+                                                            check(parts.size == 3) { "Coordenadas inválidas." }
+                                                            val x = parts[1].toIntOrNull() ?: error("Coordenada X inválida.")
+                                                            val y = parts[2].toIntOrNull() ?: error("Coordenada Y inválida.")
+                                                            check(x in 0..1000 && y in 0..1000) { "Toque fora dos limites." }
+                                                            ControlApi.decide(context, request.optString("id"), true)
+                                                            check(service.tapNormalized(x, y)) { "O Android não aceitou o toque." }
+                                                        } else {
+                                                            ControlApi.decide(context, request.optString("id"), true)
+                                                            val ok = if (action == "remote_back") service.goBack() else service.goHome()
+                                                            check(ok) { "O Android não aceitou o comando." }
+                                                        }
                                                         return@launch
                                                     }
                                                     if (action == "camera_front" || action == "camera_back") {
