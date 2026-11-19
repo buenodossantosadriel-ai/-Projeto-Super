@@ -464,7 +464,7 @@ Deno.serve(async (req: Request) => {
       const { data: device } = await admin.from("projeto_super_devices").select("id,last_seen_at")
         .eq("id", deviceId).eq("owner_user_id", owner.id).eq("status", "paired").maybeSingle();
       if (!device) return respond({ ok: false, error: "Dispositivo não encontrado." }, 404);
-      const { data: activeSession } = await admin.from("projeto_super_device_sessions").select("id,last_frame_at,started_at")
+      const { data: activeSession } = await admin.from("projeto_super_device_sessions").select("id,session_type,last_frame_at,started_at")
         .eq("device_id", deviceId).eq("owner_user_id", owner.id).eq("status", "active").limit(1);
       let hasActiveSession = Boolean(activeSession?.length);
       const activeLastActivity = device.last_seen_at || activeSession?.[0]?.started_at;
@@ -480,7 +480,9 @@ Deno.serve(async (req: Request) => {
       if (requestedAction === "stop_session" && !hasActiveSession) {
         return respond({ ok: false, error: "Não há sessão ativa para encerrar." }, 409);
       }
-      if (requestedAction !== "stop_session" && hasActiveSession) {
+      const isRemoteCommand = isRemoteNavigation || isTap;
+      if (requestedAction !== "stop_session" && hasActiveSession &&
+          !(isRemoteCommand && activeSession?.[0]?.session_type === "screen_share")) {
         return respond({ ok: false, error: "Encerre a sessão atual antes de iniciar outra." }, 409);
       }
       const { data: existing } = await admin.from("projeto_super_control_requests").select("id")
