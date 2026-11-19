@@ -1,124 +1,17 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#101827">
-  <meta name="description" content="Laboratório experimental de permissões, captura e envio consentido de arquivos.">
-  <title>Projeto Super | Laboratório</title>
-  <link rel="stylesheet" href="style.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <meta http-equiv="refresh" content="0; url=/dashboard.html">
+  <title>Projeto Super | Dashboard</title>
+  <script>
+    window.location.replace("/dashboard.html");
+  </script>
 </head>
 <body>
-  <main class="container">
-    <header class="hero">
-      <span class="eyebrow">LABORATÓRIO EXPERIMENTAL</span>
-      <h1>Projeto <span>Super</span></h1>
-      <p>Teste de recursos do navegador Android com autorização explícita.</p>
-    </header>
-
-    <div class="notice">
-      <strong>Privacidade e controle:</strong> as permissões são solicitadas pelo navegador.
-      Nada é gravado ou enviado automaticamente. Você escolhe o que capturar e precisa confirmar
-      cada envio. Os arquivos enviados ficam em armazenamento privado do Supabase.
-    </div>
-
-    <section class="card">
-      <div class="card-heading"><span class="emoji">🔐</span><div>
-        <h2>Autorização inicial</h2>
-        <p>Use o botão abaixo para iniciar, uma única vez, as solicitações dos recursos disponíveis. O navegador/Android controla as confirmações do sistema.</p>
-      </div></div>
-      <button id="btnPermissoes" type="button">PERMITIR ACESSO AOS RECURSOS</button>
-      <p id="statusPermissoes" class="status" aria-live="polite">Aguardando autorização inicial.</p>
-      <p id="statusCamera" class="status" hidden></p>
-      <p id="statusMicrofone" class="status" hidden></p>
-      <p id="statusLocal" class="status" hidden></p>
-      <p id="statusNotif" class="status" hidden></p>
-      <video id="videoCamera" class="video-preview" autoplay playsinline muted hidden></video>
-      <div style="display:grid;gap:10px;margin-top:12px">
-        <button id="btnFoto" type="button" disabled>Capturar foto</button>
-        <button id="btnGravarVideo" class="button-secondary" type="button" disabled>Iniciar gravação de vídeo</button>
-        <button id="btnGravarAudio" class="button-secondary" type="button" disabled>Iniciar gravação de áudio</button>
-        <button id="btnPararAudio" class="button-danger" type="button">Desligar câmera e microfone</button>
-      </div>
-    </section>
-
-    <section class="card">
-      <div class="card-heading"><span class="emoji">🗂️</span><div>
-        <h2>Selecionar imagem, vídeo ou áudio</h2>
-        <p>Escolha manualmente um arquivo do dispositivo para preparar o envio.</p>
-      </div></div>
-      <input id="arquivoGaleria" type="file" accept="image/*,video/*,audio/*" hidden>
-      <button id="btnGaleria" type="button">Selecionar arquivo</button>
-      <p id="statusGaleria" class="status" aria-live="polite">Nenhum arquivo selecionado.</p>
-      <img id="previewImagem" class="preview" alt="Prévia do arquivo selecionado" hidden>
-      <video id="previewVideo" class="video-preview" controls playsinline hidden></video>
-      <audio id="previewAudio" controls style="width:100%;margin-top:14px" hidden></audio>
-    </section>
-
-    <section class="card">
-      <div class="card-heading"><span class="emoji">☁️</span><div>
-        <h2>Enviar arquivo ao Supabase</h2>
-        <p>Somente o arquivo selecionado ou gravado será enviado após sua confirmação.</p>
-      </div></div>
-      <label style="display:flex;gap:10px;align-items:flex-start;line-height:1.45;margin:12px 0;color:#dbeafe">
-        <input id="consentimentoMidia" type="checkbox" style="margin-top:4px">
-        Confirmo que escolhi este arquivo e autorizo seu envio ao armazenamento privado do Projeto Super.
-      </label>
-      <button id="btnEnviarArquivo" type="button" disabled>Enviar arquivo selecionado</button>
-      <p id="statusUpload" class="status" aria-live="polite">Aguardando um arquivo.</p>
-    </section>
-
-    <section class="card">
-      <div class="card-heading"><span class="emoji">📋</span><div>
-        <h2>Relatório de permissões</h2>
-        <p>Você pode enviar o resultado dos testes. A localização só será incluída se tiver sido obtida e você confirmar este relatório.</p>
-      </div></div>
-      <label style="display:flex;gap:10px;align-items:flex-start;line-height:1.45;margin:12px 0;color:#dbeafe">
-        <input id="consentimentoRelatorio" type="checkbox" style="margin-top:4px">
-        Autorizo o envio do relatório de permissões e, se disponível, das coordenadas da localização.
-      </label>
-      <button id="btnEnviarRelatorio" type="button">Enviar relatório de teste</button>
-      <p id="statusRelatorio" class="status" aria-live="polite">Nenhum relatório enviado.</p>
-    </section>
-
-
-    <section class="card" id="adminLogin">
-      <div class="card-heading"><span class="emoji">🔑</span><div>
-        <h2>Acesso do administrador</h2>
-        <p>O laboratório continua público. Somente o painel de controle remoto exige autenticação administrativa.</p>
-      </div></div>
-      <label for="adminEmail">E-mail</label>
-      <input id="adminEmail" type="email" autocomplete="username" placeholder="E-mail do administrador">
-      <label for="adminPassword">Senha</label>
-      <input id="adminPassword" type="password" autocomplete="current-password" placeholder="Sua senha">
-      <button id="btnAdminLogin" type="button">Entrar no painel</button>
-      <p id="statusAdminLogin" class="status" aria-live="polite">Entre com a conta autorizada.</p>
-    </section>
-
-    <section class="card" id="remoteControl" hidden>
-      <div class="card-heading"><span class="emoji">📡</span><div>
-        <h2>Dispositivos Android vinculados</h2>
-        <p>Vincule o aparelho de laboratório pelo código exibido no app. Cada pedido de câmera ou tela precisa ser aceito no próprio Android. A prévia é atualizada por quadros periódicos, não é um fluxo contínuo de vídeo.</p>
-      </div></div>
-      <label for="pairingCode">Código de pareamento de 8 dígitos</label>
-      <input id="pairingCode" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="00000000">
-      <button id="btnParearDispositivo" type="button">Vincular aparelho</button>
-      <p id="statusControle" class="status" aria-live="polite">Aguardando conexão segura.</p>
-      <div id="listaDispositivos" class="device-list"></div>
-    </section>
-
-    <section class="card log-card">
-      <h2>Registro de atividades</h2>
-      <ol id="log" aria-live="polite"><li>Laboratório iniciado. Nenhum arquivo foi enviado.</li></ol>
-      <button id="btnLimparLog" class="button-secondary" type="button">Limpar registro</button>
-    </section>
-
-    <footer>
-      Projeto de estudo. Câmera e microfone só funcionam após autorização. Gravações e arquivos
-      dependem de uma ação explícita de captura e de uma confirmação separada para envio.
-      Limite de upload: 50 MB por arquivo.
-    </footer>
-  </main>
-  <script type="module" src="app.js"></script>
+  <p>Redirecionando para o dashboard do Projeto Super…</p>
+  <p><a href="/dashboard.html">Abrir dashboard</a></p>
 </body>
 </html>
