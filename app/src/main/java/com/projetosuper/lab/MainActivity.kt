@@ -172,8 +172,14 @@ class MainActivity : ComponentActivity() {
                                 val sessionId = response.optString("session_id")
                                 check(sessionId.isNotBlank()) { "O servidor não confirmou a sessão de tela." }
                                 createdSessionId = sessionId
-                                val start = Intent(context, ScreenCaptureService::class.java)
-                                    .setAction(ScreenCaptureService.ACTION_START)
+                                // Evita manter a captura legada ativa e inicia o mesmo serviço
+                                // WebRTC que o dashboard usa para câmera e vídeo ao vivo.
+                                context.startService(
+                                    Intent(context, ScreenCaptureService::class.java)
+                                        .setAction(ScreenCaptureService.ACTION_STOP)
+                                )
+                                val start = Intent(context, WebRtcCaptureService::class.java)
+                                    .setAction(WebRtcCaptureService.ACTION_START_SCREEN)
                                     .putExtra(WebRtcCaptureService.EXTRA_SESSION_ID, sessionId)
                                     .putExtra(WebRtcCaptureService.EXTRA_RESULT_CODE, result.resultCode)
                                     .putExtra(WebRtcCaptureService.EXTRA_RESULT_DATA, result.data)
