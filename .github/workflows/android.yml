@@ -9,7 +9,7 @@ on:
       - virtual-display-experiment
   pull_request:
     branches:
-      - main
+      - android-native
 
 permissions:
   contents: read
