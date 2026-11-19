@@ -182,6 +182,7 @@ class WebRtcCaptureService : LifecycleService() {
         }
         createOffer()
         startSignalPolling()
+        startControlPolling()
     }
 
     private fun createCapturer(intent: Intent?): VideoCapturer {
@@ -307,6 +308,52 @@ class WebRtcCaptureService : LifecycleService() {
                     android.util.Log.w("ProjetoSuperWebRTC", "Polling de sinalização: ${error.message}")
                 }
                 delay(700)
+            }
+        }
+    }
+
+    /**
+     * O monitoramento da Activity é pausado quando ela vai para segundo plano.
+     * O serviço de captura continua ativo, então ele próprio precisa receber
+     * pedidos de encerramento remoto enquanto a transmissão estiver aberta.
+     */
+    private fun startControlPolling() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            while (isActive && !shuttingDown) {
+                try {
+                    val response = ControlApi.poll(this@WebRtcCaptureService)
+                    val requests = response.optJSONArray("requests")
+                    if (requests != null) {
+                        for (i in 0 until requests.length()) {
+                            val request = requests.getJSONObject(i)
+                            if (request.optString("action") == "stop_session") {
+                                try {
+                                    val result = ControlApi.decide(
+                                        this@WebRtcCaptureService,
+                                        request.optString("id"),
+                                        true
+                                    )
+                                    if (result.optBoolean("stopped")) {
+                                        stopCapture(remoteAlreadyStopped = true)
+                                        return@launch
+                                    }
+                                } catch (error: Exception) {
+                                    // A Activity pode ter confirmado o mesmo pedido primeiro.
+                                    android.util.Log.i(
+                                        "ProjetoSuperWebRTC",
+                                        "Pedido de encerramento já processado: ${error.message}"
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } catch (error: Exception) {
+                    android.util.Log.w(
+                        "ProjetoSuperWebRTC",
+                        "Falha ao verificar encerramento remoto: ${error.message}"
+                    )
+                }
+                delay(2500)
             }
         }
     }
