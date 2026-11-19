@@ -100,18 +100,18 @@ class MainActivity : ComponentActivity() {
                 }
                 val launchIntent = createAppLaunchIntent(packageName)
                     ?: error("O Android não disponibilizou uma atividade de inicialização para este aplicativo.")
-                ControlApi.decide(context, requestId, true)
                 RemoteDisplayLauncher.start(context, launchIntent)
+                ControlApi.decide(context, requestId, true)
             }
             action.startsWith("type_text:") -> {
                 val text = action.substringAfter("type_text:")
                 check(text.isNotBlank() && text.length <= 2000) { "Texto vazio ou maior que 2.000 caracteres." }
                 val service = RemoteControlAccessibilityService.activeInstance
                     ?: error("Ative a acessibilidade do Projeto Super nas configurações do Android.")
-                ControlApi.decide(context, requestId, true)
                 check(service.setFocusedText(text)) {
-                    "Não foi encontrado um campo de texto ativo ou o aplicativo não permite preenchimento remoto."
+                    "Não foi possível inserir texto no campo focado do display remoto."
                 }
+                ControlApi.decide(context, requestId, true)
             }
             action.startsWith("tap:") -> {
                 val parts = action.split(":")
@@ -121,15 +121,8 @@ class MainActivity : ComponentActivity() {
                 check(x in 0..1000 && y in 0..1000) { "Toque fora dos limites." }
                 val service = RemoteControlAccessibilityService.activeInstance
                     ?: error("Ative a acessibilidade do Projeto Super nas configurações do Android.")
+                check(service.tapNormalized(x, y)) { "O Android não aceitou o toque no display remoto." }
                 ControlApi.decide(context, requestId, true)
-                check(service.tapNormalized(x, y)) { "O Android não aceitou o toque." }
-            }
-            action == "remote_back" || action == "remote_home" -> {
-                val service = RemoteControlAccessibilityService.activeInstance
-                    ?: error("Ative a acessibilidade do Projeto Super nas configurações do Android.")
-                ControlApi.decide(context, requestId, true)
-                val ok = if (action == "remote_back") service.goBack() else service.goHome()
-                check(ok) { "O Android não aceitou o comando." }
             }
             else -> error("Comando de aplicativo não reconhecido.")
         }
@@ -262,7 +255,7 @@ class MainActivity : ComponentActivity() {
                                     val isAppCommand = requestedAction.startsWith("open_app:") ||
                                         requestedAction.startsWith("tap:") ||
                                         requestedAction.startsWith("type_text:") ||
-                                        requestedAction == "remote_back" || requestedAction == "remote_home"
+
                                     if (isAppCommand && appControlAuthorized.value &&
                                         RemoteControlAccessibilityService.activeInstance == null) {
                                         busy.value = true
@@ -465,8 +458,7 @@ class MainActivity : ComponentActivity() {
                 if (request != null && !appControlAuthorized.value &&
                     (request.optString("action").startsWith("open_app:") ||
                         request.optString("action").startsWith("tap:") ||
-                        request.optString("action") == "remote_back" ||
-                        request.optString("action") == "remote_home")) {
+)) {
                     AlertDialog(
                         onDismissRequest = { },
                         title = { Text("Autorizar controle geral dos aplicativos?") },
