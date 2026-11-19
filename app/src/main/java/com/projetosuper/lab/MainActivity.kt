@@ -52,7 +52,7 @@ data class LaunchableApp(val label: String, val packageName: String)
 class MainActivity : ComponentActivity() {
     private fun loadLaunchableApps(): List<LaunchableApp> {
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        return packageManager.queryIntentActivities(intent, PackageManager.MATCH_ALL)
+        return packageManager.queryIntentActivities(intent, 0)
             .map {
                 LaunchableApp(
                     label = it.loadLabel(packageManager).toString(),
@@ -223,13 +223,20 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(deviceId.value) {
                 if (deviceId.value == null) return@LaunchedEffect
                 lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                    var lastAppsSyncAt = 0L
                     while (true) {
                         try {
                             val response = ControlApi.poll(context)
                             devicePaired.value = response.optBoolean("paired")
-                            if (devicePaired.value && appControlAuthorized.value && !appsSynced.value) {
-                                ControlApi.syncApps(context, loadLaunchableApps())
+                            val now = System.currentTimeMillis()
+                            val shouldSyncApps = devicePaired.value && appControlAuthorized.value &&
+                                (!appsSynced.value || now - lastAppsSyncAt >= 60_000L)
+                            if (shouldSyncApps) {
+                                val discoveredApps = loadLaunchableApps()
+                                apps.value = discoveredApps
+                                ControlApi.syncApps(context, discoveredApps)
                                 appsSynced.value = true
+                                lastAppsSyncAt = now
                             }
                             deviceStatus.value = if (devicePaired.value) {
                                 "Dispositivo vinculado. Com autorização geral ativa, comandos de aplicativos seguem a permissão concedida neste aparelho."
