@@ -15,10 +15,13 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.webrtc.Camera1Enumerator
 import org.webrtc.Camera2Enumerator
@@ -346,14 +349,6 @@ class WebRtcCaptureService : LifecycleService() {
     private fun stopCapture(remoteAlreadyStopped: Boolean = false) {
         if (shuttingDown) return
         shuttingDown = true
-        if (!remoteAlreadyStopped && sessionId.isNotBlank()) {
-            lifecycleScope.launch(Dispatchers.IO) {
-                try {
-                    ControlApi.sendWebRtcSignal(this@WebRtcCaptureService, sessionId, "hangup", JSONObject())
-                    ControlApi.stopSession(this@WebRtcCaptureService, sessionId)
-                } catch (_: Exception) {}
-            }
-        }
         try { capturer?.stopCapture() } catch (_: Exception) {}
         capturer?.dispose()
         capturer = null
@@ -370,8 +365,33 @@ class WebRtcCaptureService : LifecycleService() {
         factory = null
         eglBase?.release()
         eglBase = null
-        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-        stopSelf()
+
+        // Não usar lifecycleScope aqui: stopSelf() cancela esse escopo antes
+        // de a atualização remota terminar. Mantém o serviço vivo até concluir.
+        if (!remoteAlreadyStopped && sessionId.isNotBlank()) {
+            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                try {
+                    try {
+                        ControlApi.sendWebRtcSignal(this@WebRtcCaptureService, sessionId, "hangup", JSONObject())
+                    } catch (error: Exception) {
+                        android.util.Log.w("ProjetoSuperWebRTC", "Não foi possível enviar hangup: ${error.message}")
+                    }
+                    try {
+                        ControlApi.stopSession(this@WebRtcCaptureService, sessionId)
+                    } catch (error: Exception) {
+                        android.util.Log.e("ProjetoSuperWebRTC", "Não foi possível encerrar sessão no servidor: ${error.message}")
+                    }
+                } finally {
+                    withContext(Dispatchers.Main) {
+                        ServiceCompat.stopForeground(this@WebRtcCaptureService, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                        stopSelf()
+                    }
+                }
+            }
+        } else {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
     }
 
     private fun createNotificationChannel() {
