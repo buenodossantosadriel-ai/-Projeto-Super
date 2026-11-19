@@ -145,7 +145,6 @@ class RemoteControlAccessibilityService : AccessibilityService() {
     fun tap(x: Float, y: Float): Boolean {
         val path = Path().apply { moveTo(x, y) }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
         val displayId = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
             .getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.DEFAULT_DISPLAY)
         val gesture = GestureDescription.Builder()
@@ -156,6 +155,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
     }
 
     fun swipe(x1: Float, y1: Float, x2: Float, y2: Float, durationMs: Long): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
         val path = Path().apply { moveTo(x1, y1); lineTo(x2, y2) }
         val displayId = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
             .getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.DEFAULT_DISPLAY)
