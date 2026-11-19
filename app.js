@@ -5,6 +5,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 const SUPABASE_URL = "https://syozyulcoypfqeasdawg.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KEhlMxn5krWrM4SmfGzGQA_CCW73O-e";
 const ENDPOINT = SUPABASE_URL + "/functions/v1/projeto-super-receber";
+const CONTROL_ENDPOINT = SUPABASE_URL + "/functions/v1/projeto-super-controle";
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
 const el = (id) => document.getElementById(id);
@@ -410,3 +411,215 @@ window.addEventListener("pagehide", () => {
 registrar(window.isSecureContext
   ? "HTTPS detectado. Nenhum arquivo ou localização foi enviado."
   : "Aviso: recursos protegidos exigem HTTPS ou localhost.");
+
+
+// Painel de controle remoto consentido para o aplicativo Android.
+const controlStatus = el("statusControle");
+const devicesContainer = el("listaDispositivos");
+let controlDevices = [];
+
+async function controlPost(body) {
+  const { data } = await supabase.auth.getSession();
+  const session = data.session;
+  if (!session) throw new Error("Entre com a conta de administrador para usar o painel.");
+  const response = await fetch(CONTROL_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": SUPABASE_PUBLISHABLE_KEY,
+      "Authorization": "Bearer " + session.access_token
+    },
+    body: JSON.stringify(body)
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.ok) throw new Error(result.error || "Falha no controle (" + response.status + ").");
+  return result;
+}
+
+function controlMessage(message, isError = false) {
+  if (!controlStatus) return;
+  controlStatus.textContent = message;
+  controlStatus.dataset.error = isError ? "true" : "false";
+}
+
+function makeControlButton(label, action, deviceId, secondary = false) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = label;
+  if (secondary) button.className = "button-secondary";
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    try {
+      await controlPost({ action: "request_control", device_id: deviceId, control: action });
+      controlMessage("Solicitação enviada. O Android exibirá uma confirmação antes de iniciar qualquer captura.");
+      await refreshControlDevices();
+    } catch (error) {
+      controlMessage(error.message, true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+  return button;
+}
+
+function renderControlDevices() {
+  if (!devicesContainer) return;
+  devicesContainer.replaceChildren();
+  if (!controlDevices.length) {
+    const empty = document.createElement("p");
+    empty.className = "status";
+    empty.textContent = "Nenhum aparelho vinculado ainda.";
+    devicesContainer.appendChild(empty);
+    return;
+  }
+  for (const device of controlDevices) {
+    const card = document.createElement("article");
+    card.className = "device-card";
+    const heading = document.createElement("div");
+    heading.className = "device-card-heading";
+    const title = document.createElement("strong");
+    title.textContent = device.device_name || "Dispositivo Android";
+    const state = document.createElement("span");
+    state.textContent = device.status === "paired" ? "Vinculado" : device.status;
+    heading.append(title, state);
+    card.appendChild(heading);
+
+    const lastSeen = document.createElement("p");
+    lastSeen.className = "status";
+    lastSeen.textContent = device.last_seen_at
+      ? "Última comunicação: " + new Date(device.last_seen_at).toLocaleString("pt-BR")
+      : "Aguardando comunicação do aparelho.";
+    card.appendChild(lastSeen);
+
+    if (device.active_session) {
+      const sessionInfo = document.createElement("p");
+      sessionInfo.className = "status";
+      sessionInfo.textContent = "Sessão ativa: " + device.active_session.session_type;
+      card.appendChild(sessionInfo);
+      const preview = document.createElement("img");
+      preview.className = "device-live-preview";
+      preview.alt = "Quadro mais recente recebido do dispositivo";
+      preview.dataset.sessionId = device.active_session.id;
+      preview.hidden = true;
+      card.appendChild(preview);
+      card.appendChild(makeControlButton("Encerrar sessão", "stop_session", device.id, true));
+    }
+    const actions = document.createElement("div");
+    actions.className = "device-actions";
+    actions.append(
+      makeControlButton("Câmera frontal", "camera_front", device.id),
+      makeControlButton("Câmera traseira", "camera_back", device.id),
+      makeControlButton("Compartilhar tela", "screen_share", device.id, true)
+    );
+    card.appendChild(actions);
+    const revoke = document.createElement("button");
+    revoke.type = "button";
+    revoke.className = "button-danger";
+    revoke.textContent = "Desvincular aparelho";
+    revoke.addEventListener("click", async () => {
+      if (!window.confirm("Desvincular este aparelho?")) return;
+      try {
+        await controlPost({ action: "revoke_device", device_id: device.id });
+        controlMessage("Aparelho desvinculado.");
+        await refreshControlDevices();
+      } catch (error) { controlMessage(error.message, true); }
+    });
+    card.appendChild(revoke);
+    devicesContainer.appendChild(card);
+  }
+}
+
+async function refreshControlDevices() {
+  if (!devicesContainer) return;
+  try {
+    const result = await controlPost({ action: "list_devices" });
+    controlDevices = result.devices || [];
+    renderControlDevices();
+  } catch (error) {
+    controlMessage(error.message, true);
+  }
+}
+
+async function refreshControlFrames() {
+  if (!devicesContainer) return;
+  const previews = devicesContainer.querySelectorAll(".device-live-preview[data-session-id]");
+  for (const preview of previews) {
+    try {
+      const result = await controlPost({ action: "latest_frame", session_id: preview.dataset.sessionId });
+      if (result.frame?.url) {
+        preview.src = result.frame.url;
+        preview.hidden = false;
+      } else if (result.session_status !== "active") {
+        preview.hidden = true;
+      }
+    } catch (_) { /* a próxima atualização tentará novamente */ }
+  }
+}
+
+el("btnParearDispositivo")?.addEventListener("click", async () => {
+  const code = el("pairingCode").value.trim();
+  if (!/^\d{8}$/.test(code)) {
+    controlMessage("Digite o código de pareamento de 8 dígitos.", true);
+    return;
+  }
+  el("btnParearDispositivo").disabled = true;
+  try {
+    await controlPost({ action: "pair_device", pairing_code: code });
+    el("pairingCode").value = "";
+    controlMessage("Aparelho vinculado com sucesso. Os pedidos ainda exigem confirmação local.");
+    await refreshControlDevices();
+  } catch (error) {
+    controlMessage(error.message, true);
+  } finally {
+    el("btnParearDispositivo").disabled = false;
+  }
+});
+
+let controlPollingStarted = false;
+function showAdminPanel(isAdmin) {
+  el("adminLogin").hidden = isAdmin;
+  el("remoteControl").hidden = !isAdmin;
+  if (isAdmin && !controlPollingStarted) {
+    controlPollingStarted = true;
+    refreshControlDevices();
+    window.setInterval(refreshControlDevices, 5000);
+    window.setInterval(refreshControlFrames, 1500);
+  }
+}
+async function validateAdminSession(session) {
+  const email = session?.user?.email?.toLowerCase();
+  if (email !== "elisareisrodrigues05@gmail.com") {
+    showAdminPanel(false);
+    if (session) await supabase.auth.signOut();
+    setStatus("statusAdminLogin", "Esta conta não tem autorização para acessar o painel.");
+    return false;
+  }
+  showAdminPanel(true);
+  setStatus("statusAdminLogin", "Administrador autenticado.");
+  return true;
+}
+el("btnAdminLogin")?.addEventListener("click", async () => {
+  const email = el("adminEmail").value.trim().toLowerCase();
+  const password = el("adminPassword").value;
+  if (!email || !password) return setStatus("statusAdminLogin", "Informe e-mail e senha.");
+  el("btnAdminLogin").disabled = true;
+  setStatus("statusAdminLogin", "Validando acesso...");
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    await validateAdminSession(data.session);
+    el("adminPassword").value = "";
+  } catch (error) {
+    setStatus("statusAdminLogin", "Não foi possível entrar. Confira os dados e tente novamente.");
+  } finally {
+    el("btnAdminLogin").disabled = false;
+  }
+});
+supabase.auth.onAuthStateChange((_event, session) => {
+  if (!session) showAdminPanel(false);
+  else queueMicrotask(() => validateAdminSession(session));
+});
+supabase.auth.getSession().then(({ data }) => {
+  if (data.session) validateAdminSession(data.session);
+  else showAdminPanel(false);
+});
