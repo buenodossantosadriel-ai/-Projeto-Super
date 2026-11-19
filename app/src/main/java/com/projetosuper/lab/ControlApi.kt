@@ -110,6 +110,20 @@ object ControlApi {
         request(JSONObject().put("action", "device_poll").put("device_id", id), secret)
     }
 
+    suspend fun syncApps(context: Context, apps: List<LaunchableApp>): JSONObject = withContext(Dispatchers.IO) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo não registrado.")
+        val secret = loadSecret(prefs) ?: throw IllegalStateException("Chave local indisponível.")
+        val payloadApps = org.json.JSONArray()
+        apps.take(300).forEach { app ->
+            payloadApps.put(JSONObject().put("package_name", app.packageName).put("app_label", app.label))
+        }
+        request(
+            JSONObject().put("action", "device_sync_apps").put("device_id", id).put("apps", payloadApps),
+            secret
+        )
+    }
+
     suspend fun decide(context: Context, requestId: String, accept: Boolean): JSONObject = withContext(Dispatchers.IO) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo não registrado.")
