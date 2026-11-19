@@ -112,7 +112,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                     ControlApi.decide(this, requestId, true)
                     decided = true
                     check(setFocusedText(value)) {
-                        "Toque primeiro no campo de texto da tela compartilhada."
+                        "Abra o aplicativo e selecione primeiro o campo de texto."
                     }
                 }
                 action.startsWith("tap:") -> {
