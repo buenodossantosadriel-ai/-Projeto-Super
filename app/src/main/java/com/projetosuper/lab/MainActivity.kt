@@ -141,6 +141,7 @@ class MainActivity : ComponentActivity() {
                 try {
                     val credentials = ControlApi.ensureRegistered(context)
                     deviceId.value = credentials.deviceId
+                    ControlApi.syncApps(context, loadLaunchableApps())
                     deviceStatus.value = "Dispositivo conectado e vinculado automaticamente à conta administrativa."
                 } catch (error: Exception) {
                     deviceError.value = error.message ?: "Falha ao registrar o dispositivo."
