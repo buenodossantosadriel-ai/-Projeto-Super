@@ -1,0 +1,46 @@
+name: Projeto Super - validar display virtual
+on:
+  push:
+    branches:
+      - android-native-virtual-display
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: projeto-super-virtual-display-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    name: Compilar e validar APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Compilar APK de validação
+        run: gradle assembleDebug
+      - name: Validar JavaScript do dashboard
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          html = Path("dashboard.html").read_text(encoding="utf-8")
+          start_tag = '<script type="module">'
+          start = html.index(start_tag) + len(start_tag)
+          end = html.index('</script>', start)
+          Path('/tmp/dashboard.mjs').write_text(html[start:end], encoding="utf-8")
+          PY
+          node --check /tmp/dashboard.mjs
+      - name: Disponibilizar APK de validação
+        uses: actions/upload-artifact@v4
+        with:
+          name: projeto-super-virtual-display-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
