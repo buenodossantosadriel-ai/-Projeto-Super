@@ -35,6 +35,9 @@ object RemoteDisplayLauncher {
         check(display.flags and android.view.Display.FLAG_PRIVATE == 0) {
             "O display virtual está privado e não aceita aplicativos de terceiros."
         }
+        check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            "A validação de abertura em display secundário exige Android 10 ou superior."
+        }
         val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         check(activityManager.isActivityStartAllowedOnDisplay(context, displayId, intent)) {
             "O Android bloqueou a abertura deste aplicativo no display virtual."
