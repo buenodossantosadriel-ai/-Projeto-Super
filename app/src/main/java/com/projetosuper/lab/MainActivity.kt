@@ -3,12 +3,9 @@ package com.projetosuper.lab
 import android.Manifest
 import android.content.ComponentName
 import android.provider.Settings.Secure
-import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.media.projection.MediaProjectionManager
-import android.media.projection.MediaProjectionConfig
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -60,14 +57,7 @@ private fun isAccessibilityServiceEnabled(context: Context): Boolean {
 }
 
 class MainActivity : ComponentActivity() {
-    private fun buildScreenCaptureIntent(): Intent {
-        val manager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        return if (Build.VERSION.SDK_INT >= 34) {
-            manager.createScreenCaptureIntent(MediaProjectionConfig.createConfigForDefaultDisplay())
-        } else {
-            manager.createScreenCaptureIntent()
-        }
-    }
+
 
     private fun loadLaunchableApps(): List<LaunchableApp> {
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
@@ -102,43 +92,8 @@ class MainActivity : ComponentActivity() {
             val deviceStatus = remember { mutableStateOf("Registrando dispositivo seguro...") }
             val deviceError = remember { mutableStateOf<String?>(null) }
             val pendingRequest = remember { mutableStateOf<JSONObject?>(null) }
-            val pendingScreenRequestId = remember { mutableStateOf<String?>(null) }
             val busy = remember { mutableStateOf(false) }
 
-            val screenCaptureLauncher = rememberLauncherForActivityResult(
-                ActivityResultContracts.StartActivityForResult()
-            ) { result ->
-                val requestId = pendingScreenRequestId.value
-                pendingScreenRequestId.value = null
-                if (requestId != null) {
-                    scope.launch {
-                        busy.value = true
-                        var createdSessionId: String? = null
-                        try {
-                            if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-                                val response = ControlApi.decide(context, requestId, true)
-                                val sessionId = response.optString("session_id")
-                                check(sessionId.isNotBlank()) { "O servidor não confirmou a sessão de tela." }
-                                createdSessionId = sessionId
-                                val start = Intent(context, ScreenCaptureService::class.java)
-                                    .setAction(ScreenCaptureService.ACTION_START)
-                                    .putExtra(ScreenCaptureService.EXTRA_SESSION_ID, sessionId)
-                                    .putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
-                                    .putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, result.data)
-                                ContextCompat.startForegroundService(context, start)
-                            } else {
-                                ControlApi.decide(context, requestId, false)
-                                deviceError.value = "Captura de tela recusada no Android."
-                            }
-                        } catch (error: Exception) {
-                            createdSessionId?.let { try { ControlApi.stopSession(context, it) } catch (_: Exception) {} }
-                            deviceError.value = error.message ?: "Não foi possível iniciar a captura de tela."
-                        } finally {
-                            busy.value = false
-                        }
-                    }
-                }
-            }
 
             val permissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestMultiplePermissions()
@@ -249,9 +204,20 @@ class MainActivity : ComponentActivity() {
                                             continue
                                         }
                                         if (!busy.value && pendingScreenRequestId.value == null) {
-                                            pendingScreenRequestId.value = candidate.optString("id")
                                             busy.value = true
-                                            screenCaptureLauncher.launch(buildScreenCaptureIntent())
+                                            try {
+                                                val response = ControlApi.decide(context, candidate.optString("id"), true)
+                                                val sessionId = response.optString("session_id")
+                                                check(sessionId.isNotBlank()) { "O servidor não confirmou a sessão de display virtual." }
+                                                val start = Intent(context, ScreenCaptureService::class.java)
+                                                    .setAction(ScreenCaptureService.ACTION_START)
+                                                    .putExtra(ScreenCaptureService.EXTRA_SESSION_ID, sessionId)
+                                                ContextCompat.startForegroundService(context, start)
+                                            } catch (error: Exception) {
+                                                deviceError.value = error.message ?: "Não foi possível iniciar o display virtual."
+                                            } finally {
+                                                busy.value = false
+                                            }
                                         }
                                         break
                                     }
@@ -322,7 +288,7 @@ class MainActivity : ComponentActivity() {
                             PermissionRow("Acessibilidade para controle remoto", accessibilityEnabled)
                             Text(
                                 "Transmissão de imagens: a permissão de Internet é normal e já está declarada no aplicativo. " +
-                                    "A confirmação de captura de tela (MediaProjection) será solicitada pelo próprio Android " +
+                                    "A sessão cria um display virtual independente; o suporte depende do Android e do fabricante. " +
                                     "quando o administrador iniciar uma transmissão; ela não pode ser concedida antecipadamente nem silenciosamente.",
                                 style = MaterialTheme.typography.bodySmall
                             )
@@ -359,7 +325,7 @@ class MainActivity : ComponentActivity() {
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Text(
-                                "A visualização captura a tela principal do telefone por MediaProjection e envia quadros JPEG. Para abrir aplicativos, tocar, digitar ou usar Voltar/Início, o serviço de acessibilidade deve estar ativado. Cada nova sessão de tela exige a confirmação nativa do Android.",
+                                "A visualização usa um display virtual independente e envia quadros JPEG desse display. A tela física não é capturada nem usada como alternativa. A compatibilidade depende do suporte do fabricante a atividades em displays secundários e gestos de acessibilidade no display remoto.",
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Button(
