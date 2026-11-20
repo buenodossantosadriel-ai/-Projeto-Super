@@ -63,6 +63,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                                 val action = request.optString("action")
                                 if (action.startsWith("open_app:") ||
                                     action.startsWith("tap:") ||
+                                    action.startsWith("swipe:") ||
                                     action.startsWith("type_text:") || action == "remote_back") {
                                     // Um único consumidor executa comandos, mesmo com a Activity em segundo plano.
                                     executeAuthorizedCommand(request)
@@ -123,6 +124,18 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                 }
                 action == "remote_back" -> {
                     check(goBackOnVirtualDisplay()) { "O Android não aceitou o gesto Voltar no display virtual." }
+                    ControlApi.decide(this, requestId, true)
+                    decided = true
+                }
+                action.startsWith("swipe:") -> {
+                    val parts = action.split(":")
+                    check(parts.size == 6) { "Parâmetros de rolagem inválidos." }
+                    val values = parts.drop(1).map { it.toIntOrNull() ?: error("Coordenada de rolagem inválida.") }
+                    check(values.take(4).all { it in 0..1000 }) { "Rolagem fora dos limites." }
+                    val duration = values[4].toLong().coerceIn(100L, 1500L)
+                    check(swipeNormalized(values[0], values[1], values[2], values[3], duration)) {
+                        "O Android não aceitou a rolagem no display remoto."
+                    }
                     ControlApi.decide(this, requestId, true)
                     decided = true
                 }
@@ -210,6 +223,20 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         val height = prefs.getInt(RemoteDisplayLauncher.PREF_DISPLAY_HEIGHT, 0)
         if (width <= 0 || height <= 0) return false
         return swipe(2f, height * 0.5f, width * 0.65f, height * 0.5f, 320)
+    }
+
+    fun swipeNormalized(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long): Boolean {
+        val prefs = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
+        val width = prefs.getInt(RemoteDisplayLauncher.PREF_DISPLAY_WIDTH, 0)
+        val height = prefs.getInt(RemoteDisplayLauncher.PREF_DISPLAY_HEIGHT, 0)
+        if (width <= 0 || height <= 0) return false
+        return swipe(
+            (x1.coerceIn(0, 1000) / 1000f) * width,
+            (y1.coerceIn(0, 1000) / 1000f) * height,
+            (x2.coerceIn(0, 1000) / 1000f) * width,
+            (y2.coerceIn(0, 1000) / 1000f) * height,
+            durationMs
+        )
     }
 
     fun tapNormalized(x: Int, y: Int): Boolean {
