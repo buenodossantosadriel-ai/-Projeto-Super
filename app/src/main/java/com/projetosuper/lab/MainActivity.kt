@@ -540,12 +540,6 @@ class MainActivity : ComponentActivity() {
                                                     screenCaptureLauncher.launch(buildScreenCaptureIntent())
                                                 }
                                                 else -> {
-                                                    if (action.startsWith("open_app:") || action.startsWith("tap:") ||
-                                                action.startsWith("type_text:") || action == "remote_back" || action == "remote_home") {
-                                                runAuthorizedAppCommand(context, request)
-                                                deviceError.value = null
-                                                return@launch
-                                            }
                                                     if (action == "camera_front" || action == "camera_back") {
                                                         check(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
                                                             "Permissão da câmera ausente. Habilite-a nas configurações do Android."
