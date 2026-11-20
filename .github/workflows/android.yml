@@ -44,6 +44,7 @@ jobs:
           capture = Path("app/src/main/java/com/projetosuper/lab/ScreenCaptureService.kt").read_text()
           control = Path("app/src/main/java/com/projetosuper/lab/RemoteControlAccessibilityService.kt").read_text()
           launcher = Path("app/src/main/java/com/projetosuper/lab/RemoteDisplayLauncher.kt").read_text()
+          api = Path("app/src/main/java/com/projetosuper/lab/ControlApi.kt").read_text()
           assert "createScreenCaptureIntent(" not in main
           assert "getMediaProjection(" not in capture
           assert "createVirtualDisplay(" in capture
@@ -94,10 +95,12 @@ jobs:
           assert 'expectedConsumer === consumer' in backend
           assert 'file.type !== "image/jpeg"' in backend
           assert '"image/png"' not in backend
-          assert 'image/jpeg' in capture
+          assert 'image/jpeg' in api
           assert 'setLaunchDisplayId(displayId)' in launcher
           assert 'd.active_session?.session_type==="screen_share"' in dashboard
           assert 'sendText.disabled=!canRemote' in dashboard
+          assert "remoteControlReady()" in capture
+          assert 'getBoolean("app_control_authorized"' in capture
           assert "WebRTC" not in all_kotlin + dashboard
           print("Arquitetura isolada, permissões, fila de comandos e transporte JPEG verificados.")
           PY
