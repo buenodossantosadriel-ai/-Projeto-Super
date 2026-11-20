@@ -234,8 +234,6 @@ class RemoteControlAccessibilityService : AccessibilityService() {
             .getString("remote_target_package", null) ?: return false
         val root = if (displayId != android.view.Display.DEFAULT_DISPLAY) {
             val windows = getWindowsOnAllDisplays().get(displayId).orEmpty()
-            val expectedPackage = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
-                .getString("remote_target_package", null) ?: return false
             val targetWindow = windows.firstOrNull { window ->
                 if (!window.isFocused && !window.isActive) return@firstOrNull false
                 val candidateRoot = window.root ?: return@firstOrNull false
