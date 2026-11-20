@@ -12,8 +12,6 @@ import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.Image
 import android.media.ImageReader
-import android.media.projection.MediaProjection
-import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
@@ -40,7 +38,6 @@ class ScreenCaptureService : LifecycleService() {
     }
 
     private var sessionId = ""
-    private var projection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
     private var imageThread: HandlerThread? = null
@@ -55,14 +52,7 @@ class ScreenCaptureService : LifecycleService() {
             return START_NOT_STICKY
         }
         sessionId = intent?.getStringExtra(EXTRA_SESSION_ID).orEmpty()
-        val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, 0) ?: 0
-        val resultData = if (Build.VERSION.SDK_INT >= 33) {
-            intent?.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            intent?.getParcelableExtra(EXTRA_RESULT_DATA)
-        }
-        if (sessionId.isBlank() || resultData == null || resultCode == 0) {
+        if (sessionId.isBlank()) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -79,42 +69,50 @@ class ScreenCaptureService : LifecycleService() {
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .addAction(android.R.drawable.ic_media_pause, "Parar", stopPending)
             .build()
-        val type = if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION else 0
+        val type = if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type)
-        startProjection(resultCode, resultData)
+        startVirtualDisplay()
         startStopCommandWatcher()
         return START_NOT_STICKY
     }
 
-    private fun startProjection(resultCode: Int, data: Intent) {
+    /**
+     * Cria um display próprio do app. Não usa MediaProjection nem espelha o display
+     * físico padrão. Os apps precisam ser iniciados explicitamente neste display.
+     */
+    private fun startVirtualDisplay() {
         try {
-            val manager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            projection = manager.getMediaProjection(resultCode, data)
+            check(packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_ACTIVITIES_ON_SECONDARY_DISPLAYS)) {
+                "Este Android não declara suporte a atividades em displays secundários."
+            }
             val metrics = resources.displayMetrics
             val scale = minOf(1f, 1280f / maxOf(metrics.widthPixels, metrics.heightPixels).toFloat())
             val width = (metrics.widthPixels * scale).toInt().coerceAtLeast(1)
             val height = (metrics.heightPixels * scale).toInt().coerceAtLeast(1)
-            imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
-            imageThread = HandlerThread("ProjetoSuperScreenFrames").also { it.start() }
+            imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 3)
+            imageThread = HandlerThread("ProjetoSuperVirtualDisplayFrames").also { it.start() }
             imageReader?.setOnImageAvailableListener({ reader ->
                 val image = reader.acquireLatestImage() ?: return@setOnImageAvailableListener
                 processImage(image)
             }, Handler(imageThread!!.looper))
-            projection?.registerCallback(object : MediaProjection.Callback() {
-                override fun onStop() { stopCapture(remoteAlreadyStopped = false) }
-            }, Handler(mainLooper))
-            check(packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_ACTIVITIES_ON_SECONDARY_DISPLAYS)) {
-                "Este Android não declara suporte a atividades em displays secundários."
-            }
-            virtualDisplay = projection?.createVirtualDisplay(
-                "ProjetoSuperRemoteDisplay", width, height, metrics.densityDpi,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC or DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY,
-                imageReader?.surface, null, null
-            )
+
+            // SUPPORTS_TOUCH é um sinalizador de framework não exposto no SDK público.
+            // A disponibilidade real de gestos ainda precisa ser validada no aparelho.
+            val supportsTouchFlag = 1 shl 6
+            val flags = DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC or
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY or supportsTouchFlag
+            virtualDisplay = (getSystemService(Context.DISPLAY_SERVICE) as DisplayManager)
+                .createVirtualDisplay(
+                    "ProjetoSuperRemoteDisplay", width, height, metrics.densityDpi,
+                    imageReader!!.surface, flags, null, Handler(mainLooper)
+                )
             val createdDisplay = virtualDisplay?.display
-                ?: error("O Android não criou o display virtual.")
+                ?: error("O Android não criou o display virtual independente.")
+            check(createdDisplay.displayId != android.view.Display.DEFAULT_DISPLAY) {
+                "O Android não criou um display separado da tela física."
+            }
             check(createdDisplay.flags and android.view.Display.FLAG_PRIVATE == 0) {
-                "O Android criou um display privado; aplicativos externos não podem ser iniciados nele."
+                "O Android criou um display privado; apps externos não podem ser iniciados nele."
             }
             getSharedPreferences("projeto_super_device", Context.MODE_PRIVATE)
                 .edit()
@@ -122,9 +120,9 @@ class ScreenCaptureService : LifecycleService() {
                 .putInt(RemoteDisplayLauncher.PREF_DISPLAY_WIDTH, width)
                 .putInt(RemoteDisplayLauncher.PREF_DISPLAY_HEIGHT, height)
                 .apply()
-            android.util.Log.i("ProjetoSuperScreen", "Display virtual público criado: id=${createdDisplay.displayId}, ${width}x${height}")
+            android.util.Log.i("ProjetoSuperScreen", "Display virtual independente criado: id=${createdDisplay.displayId}, ${width}x${height}")
         } catch (error: Exception) {
-            android.util.Log.e("ProjetoSuperScreen", "Falha ao iniciar compartilhamento", error)
+            android.util.Log.e("ProjetoSuperScreen", "Falha ao criar display virtual independente", error)
             stopCapture()
         }
     }
@@ -211,8 +209,6 @@ class ScreenCaptureService : LifecycleService() {
             .apply()
         imageReader?.close()
         imageReader = null
-        projection?.stop()
-        projection = null
         imageThread?.quitSafely()
         imageThread = null
         if (!remoteAlreadyStopped && sessionId.isNotBlank()) {
@@ -235,7 +231,6 @@ class ScreenCaptureService : LifecycleService() {
     override fun onDestroy() {
         virtualDisplay?.release()
         imageReader?.close()
-        projection?.stop()
         imageThread?.quitSafely()
         super.onDestroy()
     }
