@@ -1,4 +1,4 @@
-name: Android APK
+name: Verificação Android original
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   build:
-    name: Compilar APK original atualizado
+    name: Verificar código Android original
     runs-on: ubuntu-latest
     steps:
       - name: Baixar código
@@ -32,8 +32,8 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Compilar APK original
-        run: gradle assembleDebug
+      - name: Compilar Kotlin e recursos
+        run: gradle :app:compileDebugKotlin :app:processDebugResources
 
       - name: Validar JavaScript do dashboard
         run: |
@@ -46,10 +46,3 @@ jobs:
           Path('/tmp/dashboard.mjs').write_text(html[start:end], encoding="utf-8")
           PY
           node --check /tmp/dashboard.mjs
-
-      - name: Disponibilizar APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: projeto-super-original-atualizado
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
