@@ -19,7 +19,9 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -51,7 +53,17 @@ class ScreenCaptureService : LifecycleService() {
             stopCapture()
             return START_NOT_STICKY
         }
-        sessionId = intent?.getStringExtra(EXTRA_SESSION_ID).orEmpty()
+        val incomingSessionId = intent?.getStringExtra(EXTRA_SESSION_ID).orEmpty()
+        if (virtualDisplay != null || imageReader != null || shuttingDown) {
+            android.util.Log.w("ProjetoSuperScreen", "Solicitação duplicada de display virtual ignorada.")
+            if (incomingSessionId.isNotBlank() && incomingSessionId != sessionId) {
+                CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                    try { ControlApi.stopSession(this@ScreenCaptureService, incomingSessionId) } catch (_: Exception) {}
+                }
+            }
+            return START_NOT_STICKY
+        }
+        sessionId = incomingSessionId
         if (sessionId.isBlank()) {
             stopSelf()
             return START_NOT_STICKY
@@ -215,8 +227,11 @@ class ScreenCaptureService : LifecycleService() {
         imageThread?.quitSafely()
         imageThread = null
         if (!remoteAlreadyStopped && sessionId.isNotBlank()) {
-            lifecycleScope.launch(Dispatchers.IO) {
-                try { ControlApi.stopSession(this@ScreenCaptureService, sessionId) } catch (_: Exception) {}
+            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                try { ControlApi.stopSession(this@ScreenCaptureService, sessionId) }
+                catch (error: Exception) {
+                    android.util.Log.e("ProjetoSuperScreen", "Não foi possível encerrar a sessão no servidor: ${error.message}")
+                }
             }
         }
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
