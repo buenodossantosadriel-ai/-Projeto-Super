@@ -27,8 +27,10 @@ import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.Executors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
@@ -45,12 +47,19 @@ class CameraCaptureService : LifecycleService() {
     private var cameraProvider: ProcessCameraProvider? = null
     private var sessionId: String = ""
     private val uploading = AtomicBoolean(false)
+    private val cameraExecutor = Executors.newSingleThreadExecutor()
+    @Volatile private var starting = false
+    @Volatile private var stopping = false
     @Volatile private var lastFrameAt = 0L
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         if (intent?.action == ACTION_STOP) {
             stopCapture()
+            return START_NOT_STICKY
+        }
+        if (starting || cameraProvider != null || stopping) {
+            android.util.Log.w("ProjetoSuperCamera", "Solicitação duplicada de câmera ignorada.")
             return START_NOT_STICKY
         }
         sessionId = intent?.getStringExtra(EXTRA_SESSION_ID).orEmpty()
@@ -60,7 +69,7 @@ class CameraCaptureService : LifecycleService() {
             return START_NOT_STICKY
         }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            stopSelf()
+            stopCapture()
             return START_NOT_STICKY
         }
         createNotificationChannel()
@@ -79,6 +88,7 @@ class CameraCaptureService : LifecycleService() {
             .build()
         val type = if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA else 0
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type)
+        starting = true
         startCamera(lens)
         startStopCommandWatcher()
         return START_NOT_STICKY
@@ -89,6 +99,10 @@ class CameraCaptureService : LifecycleService() {
         future.addListener({
             try {
                 val provider = future.get()
+                if (stopping) {
+                    provider.unbindAll()
+                    return@addListener
+                }
                 cameraProvider = provider
                 provider.unbindAll()
                 val selector = if (lens == "front") CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
@@ -100,11 +114,13 @@ class CameraCaptureService : LifecycleService() {
                     .setResolutionSelector(resolution)
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
-                analysis.setAnalyzer(ContextCompat.getMainExecutor(this)) { image ->
+                analysis.setAnalyzer(cameraExecutor) { image ->
                     analyzeFrame(image)
                 }
                 provider.bindToLifecycle(this, selector, analysis)
+                starting = false
             } catch (error: Exception) {
+                starting = false
                 android.util.Log.e("ProjetoSuperCamera", "Falha ao iniciar câmera", error)
                 stopCapture()
             }
@@ -112,6 +128,10 @@ class CameraCaptureService : LifecycleService() {
     }
 
     private fun analyzeFrame(image: ImageProxy) {
+        if (stopping) {
+            image.close()
+            return
+        }
         val now = SystemClock.elapsedRealtime()
         if (now - lastFrameAt < 1000 || !uploading.compareAndSet(false, true)) {
             image.close()
@@ -193,14 +213,19 @@ class CameraCaptureService : LifecycleService() {
     }
 
     private fun stopCapture(remoteAlreadyStopped: Boolean = false) {
-        cameraProvider?.unbindAll()
-        if (!remoteAlreadyStopped && sessionId.isNotBlank()) {
-            lifecycleScope.launch(Dispatchers.IO) {
-                try { ControlApi.stopSession(this@CameraCaptureService, sessionId) } catch (_: Exception) {}
+        if (stopping) return
+        stopping = true
+        lifecycleScope.launch(Dispatchers.Main) {
+            cameraProvider?.unbindAll()
+            cameraProvider = null
+            if (!remoteAlreadyStopped && sessionId.isNotBlank()) {
+                withContext(Dispatchers.IO) {
+                    try { ControlApi.stopSession(this@CameraCaptureService, sessionId) } catch (_: Exception) {}
+                }
             }
+            ServiceCompat.stopForeground(this@CameraCaptureService, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopSelf()
         }
-        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-        stopSelf()
     }
 
     private fun createNotificationChannel() {
@@ -213,7 +238,9 @@ class CameraCaptureService : LifecycleService() {
     }
 
     override fun onDestroy() {
+        stopping = true
         cameraProvider?.unbindAll()
+        cameraExecutor.shutdown()
         super.onDestroy()
     }
 }
