@@ -324,6 +324,9 @@ Deno.serve(async (req: Request) => {
           const stoppedIds = (activeSessions || []).map((session) => session.id);
           await clearSessionFrames(admin, stoppedIds);
           await clearAudioChunks(admin, stoppedIds, "live");
+          const { error: pendingCleanupError } = await admin.from("projeto_super_control_requests")
+            .delete().eq("device_id", device.id).eq("status", "pending");
+          if (pendingCleanupError) return respond({ ok: false, error: "Sessão encerrada, mas não foi possível limpar comandos pendentes." }, 500);
           return respond({ ok: true, decision, stopped: true });
         }
         if (request.action.startsWith("open_app:")) {
@@ -357,6 +360,9 @@ Deno.serve(async (req: Request) => {
       if (error) return respond({ ok: false, error: "Não foi possível encerrar a sessão." }, 500);
       await clearSessionFrames(admin, [sessionId]);
       await clearAudioChunks(admin, [sessionId], "live");
+      const { error: pendingCleanupError } = await admin.from("projeto_super_control_requests")
+        .delete().eq("device_id", device.id).eq("status", "pending");
+      if (pendingCleanupError) return respond({ ok: false, error: "Sessão encerrada, mas não foi possível limpar comandos pendentes." }, 500);
       return respond({ ok: true });
     }
 
