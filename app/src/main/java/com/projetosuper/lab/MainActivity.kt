@@ -209,15 +209,22 @@ class MainActivity : ComponentActivity() {
                                         }
                                         if (!busy.value) {
                                             busy.value = true
+                                            var createdSessionId: String? = null
                                             try {
                                                 val response = ControlApi.decide(context, candidate.optString("id"), true)
-                                                val sessionId = response.optString("session_id")
-                                                check(sessionId.isNotBlank()) { "O servidor não confirmou a sessão de display virtual." }
+                                                createdSessionId = response.optString("session_id")
+                                                check(!createdSessionId.isNullOrBlank()) { "O servidor não confirmou a sessão de display virtual." }
                                                 val start = Intent(context, ScreenCaptureService::class.java)
                                                     .setAction(ScreenCaptureService.ACTION_START)
-                                                    .putExtra(ScreenCaptureService.EXTRA_SESSION_ID, sessionId)
+                                                    .putExtra(ScreenCaptureService.EXTRA_SESSION_ID, createdSessionId)
                                                 ContextCompat.startForegroundService(context, start)
                                             } catch (error: Exception) {
+                                                createdSessionId?.let { sessionId ->
+                                                    try { ControlApi.stopSession(context, sessionId) }
+                                                    catch (cleanupError: Exception) {
+                                                        android.util.Log.e("ProjetoSuperSession", "Falha ao limpar sessão que não iniciou.", cleanupError)
+                                                    }
+                                                }
                                                 deviceError.value = error.message ?: "Não foi possível iniciar o display virtual."
                                             } finally {
                                                 busy.value = false
@@ -291,9 +298,8 @@ class MainActivity : ComponentActivity() {
                             PermissionRow("Notificações do serviço", notificationsGranted)
                             PermissionRow("Acessibilidade para controle remoto", accessibilityEnabled)
                             Text(
-                                "Transmissão de imagens: a permissão de Internet é normal e já está declarada no aplicativo. " +
-                                    "A sessão cria um display virtual independente; o suporte depende do Android e do fabricante. " +
-                                    "quando o administrador iniciar uma transmissão; ela não pode ser concedida antecipadamente nem silenciosamente.",
+                                "Transmissão de imagens: usa um display virtual independente e quadros JPEG. " +
+                                    "Não usa MediaProjection nem captura a tela física. A compatibilidade depende do Android e do fabricante.",
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Text(
