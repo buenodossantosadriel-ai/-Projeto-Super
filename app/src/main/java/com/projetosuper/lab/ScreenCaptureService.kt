@@ -15,7 +15,6 @@ import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
-import android.view.Display
 import android.os.Handler
 import android.os.HandlerThread
 import androidx.core.app.NotificationCompat
@@ -34,8 +33,6 @@ class ScreenCaptureService : LifecycleService() {
         const val EXTRA_SESSION_ID = "session_id"
         const val EXTRA_RESULT_CODE = "projection_result_code"
         const val EXTRA_RESULT_DATA = "projection_result_data"
-        @Volatile var remoteDisplayId: Int? = null
-            private set
         private const val CHANNEL_ID = "projeto_super_screen"
         private const val NOTIFICATION_ID = 4102
     }
@@ -55,7 +52,16 @@ class ScreenCaptureService : LifecycleService() {
             stopCapture()
             return START_NOT_STICKY
         }
-        sessionId = intent?.getStringExtra(EXTRA_SESSION_ID).orEmpty()
+        val incomingSessionId = intent?.getStringExtra(EXTRA_SESSION_ID).orEmpty()
+        if (projection != null) {
+            if (incomingSessionId == sessionId) {
+                android.util.Log.i("ProjetoSuperScreen", "Solicitação duplicada ignorada para a sessão ativa.")
+            } else {
+                android.util.Log.w("ProjetoSuperScreen", "Nova captura recusada enquanto outra sessão está ativa.")
+            }
+            return START_NOT_STICKY
+        }
+        sessionId = incomingSessionId
         val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, 0) ?: 0
         val resultData = if (Build.VERSION.SDK_INT >= 33) {
             intent?.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
@@ -64,6 +70,11 @@ class ScreenCaptureService : LifecycleService() {
             intent?.getParcelableExtra(EXTRA_RESULT_DATA)
         }
         if (sessionId.isBlank() || resultData == null || resultCode == 0) {
+            if (sessionId.isNotBlank()) {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    try { ControlApi.stopSession(this@ScreenCaptureService, sessionId) } catch (_: Exception) {}
+                }
+            }
             stopSelf()
             return START_NOT_STICKY
         }
@@ -103,16 +114,19 @@ class ScreenCaptureService : LifecycleService() {
             projection?.registerCallback(object : MediaProjection.Callback() {
                 override fun onStop() { stopCapture(remoteAlreadyStopped = false) }
             }, Handler(mainLooper))
-            virtualDisplay = projection?.createVirtualDisplay(
+            val activeProjection = projection ?: error("O Android não concedeu uma sessão de captura válida.")
+            virtualDisplay = activeProjection.createVirtualDisplay(
                 "ProjetoSuperScreen", width, height, metrics.densityDpi,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC or
-                    DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                 imageReader?.surface, null, null
             )
-            remoteDisplayId = virtualDisplay?.display?.displayId
-            check(remoteDisplayId != null && remoteDisplayId != Display.DEFAULT_DISPLAY) {
-                "O Android não criou um display virtual independente."
+            check(virtualDisplay != null) {
+                "O Android não conseguiu criar a superfície de captura da tela."
             }
+            android.util.Log.i(
+                "ProjetoSuperScreen",
+                "MediaProjection ativa: ${width}x${height}; aguardando quadros JPEG."
+            )
         } catch (error: Exception) {
             android.util.Log.e("ProjetoSuperScreen", "Falha ao iniciar compartilhamento", error)
             stopCapture()
@@ -133,8 +147,15 @@ class ScreenCaptureService : LifecycleService() {
             return
         }
         lifecycleScope.launch(Dispatchers.IO) {
-            try { ControlApi.uploadFrame(this@ScreenCaptureService, sessionId, jpeg) }
-            catch (error: Exception) { android.util.Log.w("ProjetoSuperScreen", "Quadro não enviado: ${error.message}") }
+            try {
+                val response = ControlApi.uploadFrame(this@ScreenCaptureService, sessionId, jpeg)
+                android.util.Log.d(
+                    "ProjetoSuperScreen",
+                    "JPEG confirmado pelo servidor: ${jpeg.size} bytes; ${response.optString("received_at")}"
+                )
+            } catch (error: Exception) {
+                android.util.Log.w("ProjetoSuperScreen", "Quadro não enviado: ${error.message}", error)
+            }
             finally { uploading.set(false) }
         }
     }
@@ -167,7 +188,6 @@ class ScreenCaptureService : LifecycleService() {
         shuttingDown = true
         virtualDisplay?.release()
         virtualDisplay = null
-        remoteDisplayId = null
         imageReader?.close()
         imageReader = null
         projection?.stop()
@@ -193,7 +213,6 @@ class ScreenCaptureService : LifecycleService() {
 
     override fun onDestroy() {
         virtualDisplay?.release()
-        remoteDisplayId = null
         imageReader?.close()
         projection?.stop()
         imageThread?.quitSafely()
