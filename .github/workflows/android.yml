@@ -32,6 +32,24 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Verificar arquitetura sem espelhamento da tela física
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          main = Path("app/src/main/java/com/projetosuper/lab/MainActivity.kt").read_text()
+          capture = Path("app/src/main/java/com/projetosuper/lab/ScreenCaptureService.kt").read_text()
+          control = Path("app/src/main/java/com/projetosuper/lab/RemoteControlAccessibilityService.kt").read_text()
+          launcher = Path("app/src/main/java/com/projetosuper/lab/RemoteDisplayLauncher.kt").read_text()
+          assert "createScreenCaptureIntent(" not in main
+          assert "getMediaProjection(" not in capture
+          assert "createVirtualDisplay(" in capture
+          assert "VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY" in capture
+          assert "setDisplayId(displayId)" in control
+          assert "remote_target_package" in control
+          assert "Build.VERSION_CODES.R" in launcher
+          print("Arquitetura isolada e verificações de destino confirmadas.")
+          PY
+
       - name: Compilar fontes da variante release (sem gerar APK)
         run: gradle :app:compileReleaseKotlin
 
