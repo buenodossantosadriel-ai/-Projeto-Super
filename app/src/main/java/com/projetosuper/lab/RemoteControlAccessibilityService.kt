@@ -205,6 +205,18 @@ class RemoteControlAccessibilityService : AccessibilityService() {
             val targetDisplay = getSystemService(DisplayManager::class.java).getDisplay(displayId)
                 ?: return@withContext false
             if (targetDisplay.flags and android.view.Display.FLAG_PRIVATE != 0) return@withContext false
+            val expectedPackage = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
+                .getString("remote_target_package", null) ?: return@withContext false
+            val selectedAppFocused = getWindowsOnAllDisplays().get(displayId).orEmpty().any { window ->
+                if (!window.isFocused && !window.isActive) return@any false
+                val root = window.root ?: return@any false
+                try {
+                    root.packageName?.toString() == expectedPackage
+                } finally {
+                    root.recycle()
+                }
+            }
+            if (!selectedAppFocused) return@withContext false
             val gesture = GestureDescription.Builder()
                 .setDisplayId(displayId)
                 .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs.coerceIn(80, 1500)))
