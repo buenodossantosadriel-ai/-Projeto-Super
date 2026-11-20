@@ -82,9 +82,10 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                         scaledBitmap = if (targetWidth == argbBitmap.width) argbBitmap
                             else Bitmap.createScaledBitmap(argbBitmap, targetWidth, targetHeight, true)
 
+                        // Gestos usam coordenadas do display real, não do JPEG reduzido.
                         getSharedPreferences("projeto_super_device", MODE_PRIVATE).edit()
-                            .putInt(RemoteDisplayLauncher.PREF_DISPLAY_WIDTH, targetWidth)
-                            .putInt(RemoteDisplayLauncher.PREF_DISPLAY_HEIGHT, targetHeight)
+                            .putInt(RemoteDisplayLauncher.PREF_DISPLAY_WIDTH, argbBitmap.width)
+                            .putInt(RemoteDisplayLauncher.PREF_DISPLAY_HEIGHT, argbBitmap.height)
                             .apply()
 
                         val output = ByteArrayOutputStream()
