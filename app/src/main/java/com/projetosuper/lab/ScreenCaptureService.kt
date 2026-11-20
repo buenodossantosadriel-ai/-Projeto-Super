@@ -3,8 +3,10 @@ package com.projetosuper.lab
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.provider.Settings
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
@@ -63,6 +65,13 @@ class ScreenCaptureService : LifecycleService() {
         }
         sessionId = incomingSessionId
         if (sessionId.isBlank()) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        if (!remoteControlReady()) {
+            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                try { ControlApi.stopSession(this@ScreenCaptureService, sessionId) } catch (_: Exception) {}
+            }
             stopSelf()
             return START_NOT_STICKY
         }
@@ -140,6 +149,11 @@ class ScreenCaptureService : LifecycleService() {
     }
 
     private fun processImage(image: Image) {
+        if (!remoteControlReady()) {
+            image.close()
+            Handler(mainLooper).post { stopCapture() }
+            return
+        }
         val now = android.os.SystemClock.elapsedRealtime()
         if (now - lastFrameAt < 300 || !uploading.compareAndSet(false, true)) {
             image.close()
@@ -181,9 +195,24 @@ class ScreenCaptureService : LifecycleService() {
         return out.toByteArray()
     }
 
+    private fun remoteControlReady(): Boolean {
+        val prefs = getSharedPreferences("projeto_super_device", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("app_control_authorized", false) || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+        val component = ComponentName(this, RemoteControlAccessibilityService::class.java)
+        val enabled = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ).orEmpty()
+        return enabled.split(':').contains(component.flattenToString())
+    }
+
     private fun startStopCommandWatcher() {
         lifecycleScope.launch(Dispatchers.IO) {
             while (isActive && !shuttingDown) {
+                if (!remoteControlReady()) {
+                    stopCapture()
+                    return@launch
+                }
                 try {
                     val response = ControlApi.poll(this@ScreenCaptureService, "screen")
                     val requests = response.optJSONArray("requests")
