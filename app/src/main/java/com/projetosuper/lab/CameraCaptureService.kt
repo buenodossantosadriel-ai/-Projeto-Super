@@ -152,7 +152,11 @@ class CameraCaptureService : LifecycleService() {
         }
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                ControlApi.uploadFrame(this@CameraCaptureService, sessionId, jpeg)
+                val response = ControlApi.uploadFrame(this@CameraCaptureService, sessionId, jpeg)
+                android.util.Log.d(
+                    "ProjetoSuperCamera",
+                    "JPEG da câmera confirmado: ${jpeg.size} bytes; ${response.optString("received_at")}"
+                )
             } catch (error: Exception) {
                 android.util.Log.w("ProjetoSuperCamera", "Quadro não enviado: ${error.message}")
             } finally {
