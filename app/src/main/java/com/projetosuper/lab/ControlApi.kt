@@ -103,11 +103,11 @@ object ControlApi {
         Credentials(id, secret)
     }
 
-    suspend fun poll(context: Context): JSONObject = withContext(Dispatchers.IO) {
+    suspend fun poll(context: Context, consumer: String = "activity"): JSONObject = withContext(Dispatchers.IO) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val id = prefs.getString("device_id", null) ?: throw IllegalStateException("Dispositivo não registrado.")
         val secret = loadSecret(prefs) ?: throw IllegalStateException("Chave local indisponível.")
-        request(JSONObject().put("action", "device_poll").put("device_id", id), secret)
+        request(JSONObject().put("action", "device_poll").put("device_id", id).put("consumer", consumer), secret)
     }
 
     suspend fun syncApps(context: Context, apps: List<LaunchableApp>): JSONObject = withContext(Dispatchers.IO) {
