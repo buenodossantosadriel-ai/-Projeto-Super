@@ -160,7 +160,7 @@ class AudioCaptureService : LifecycleService() {
         lifecycleScope.launch(Dispatchers.IO) {
             while (isActive && !stopping) {
                 try {
-                    val response = ControlApi.poll(this@AudioCaptureService)
+                    val response = ControlApi.poll(this@AudioCaptureService, "audio")
                     val requests = response.optJSONArray("requests")
                     if (requests != null) {
                         for (i in 0 until requests.length()) {
