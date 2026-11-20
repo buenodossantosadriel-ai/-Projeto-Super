@@ -63,8 +63,19 @@ jobs:
           backend = Path("supabase/functions/projeto-super-controle/index.ts").read_text()
           assert 'action.startsWith("swipe:")' in backend
           assert "const isSwipe =" in backend
-          assert "(isTap || isSwipe)" in backend
           assert "isRemoteNavigation || isTap || isSwipe || isTypeText" in backend
+          assert "isVirtualDisplayCommand" in backend
+          assert 'const allowedConsumers = ["activity", "accessibility", "screen", "audio", "camera"]' in backend
+          assert 'expectedConsumer = sessionType === "screen_share" ? "screen"' in backend
+          assert 'ControlApi.poll(this@ScreenCaptureService, "screen")' in capture
+          audio = Path("app/src/main/java/com/projetosuper/lab/AudioCaptureService.kt").read_text()
+          camera = Path("app/src/main/java/com/projetosuper/lab/CameraCaptureService.kt").read_text()
+          activity = Path("app/src/main/java/com/projetosuper/lab/MainActivity.kt").read_text()
+          assert 'ControlApi.poll(this@AudioCaptureService, "audio")' in audio
+          assert 'ControlApi.poll(this@CameraCaptureService, "camera")' in camera
+          assert 'ControlApi.poll(context, "activity")' in activity
+          assert 'ControlApi.poll(this, "accessibility")' in control
+          assert "createScreenCaptureIntent(" not in activity
           assert "Build.VERSION_CODES.R" in launcher
           print("Arquitetura isolada, consumidores e comandos de toque/rolagem verificados.")
           PY
