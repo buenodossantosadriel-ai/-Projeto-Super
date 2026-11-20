@@ -203,7 +203,9 @@ class RemoteControlAccessibilityService : AccessibilityService() {
 
     private suspend fun dispatchGestureOnDisplay(displayId: Int, path: Path, durationMs: Long): Boolean =
         withContext(Dispatchers.Main) {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R ||
+            if (!getSharedPreferences("projeto_super_device", MODE_PRIVATE)
+                    .getBoolean("app_control_authorized", false) ||
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.R ||
                 displayId == android.view.Display.INVALID_DISPLAY ||
                 displayId == android.view.Display.DEFAULT_DISPLAY) return@withContext false
             val targetDisplay = getSystemService(DisplayManager::class.java).getDisplay(displayId)
@@ -292,6 +294,8 @@ class RemoteControlAccessibilityService : AccessibilityService() {
     /** Insere texto somente no campo que está focado naquele instante. */
     fun setFocusedText(value: String): Boolean {
         if (value.isBlank() || value.length > 2000) return false
+        if (!getSharedPreferences("projeto_super_device", MODE_PRIVATE)
+                .getBoolean("app_control_authorized", false)) return false
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
         val displayId = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
             .getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.INVALID_DISPLAY)
