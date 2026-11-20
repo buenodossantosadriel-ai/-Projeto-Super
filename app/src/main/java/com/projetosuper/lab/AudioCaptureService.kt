@@ -135,8 +135,12 @@ class AudioCaptureService : LifecycleService() {
                     }
                     if (offset == pcm.size && !stopping) {
                         val wav = makeWav(pcm, SAMPLE_RATE, 1, 16)
-                        ControlApi.uploadAudioChunk(
+                        val response = ControlApi.uploadAudioChunk(
                             this@AudioCaptureService, sessionId, wav, mode, chunkIndex++, CHUNK_MS
+                        )
+                        android.util.Log.d(
+                            "ProjetoSuperAudio",
+                            "Trecho WAV confirmado pelo servidor: ${wav.size} bytes; ${response.optString("received_at")}"
                         )
                     }
                 }
