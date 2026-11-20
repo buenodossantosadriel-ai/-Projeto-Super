@@ -137,6 +137,7 @@ class ScreenCaptureService : LifecycleService() {
             }
             getSharedPreferences("projeto_super_device", Context.MODE_PRIVATE)
                 .edit()
+                .remove("remote_target_package")
                 .putInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, createdDisplay.displayId)
                 .putInt(RemoteDisplayLauncher.PREF_DISPLAY_WIDTH, width)
                 .putInt(RemoteDisplayLauncher.PREF_DISPLAY_HEIGHT, height)
@@ -247,6 +248,7 @@ class ScreenCaptureService : LifecycleService() {
             .remove(RemoteDisplayLauncher.PREF_DISPLAY_ID)
             .remove(RemoteDisplayLauncher.PREF_DISPLAY_WIDTH)
             .remove(RemoteDisplayLauncher.PREF_DISPLAY_HEIGHT)
+            .remove("remote_target_package")
             .apply()
         imageReader?.close()
         imageReader = null
@@ -278,6 +280,7 @@ class ScreenCaptureService : LifecycleService() {
             .remove(RemoteDisplayLauncher.PREF_DISPLAY_ID)
             .remove(RemoteDisplayLauncher.PREF_DISPLAY_WIDTH)
             .remove(RemoteDisplayLauncher.PREF_DISPLAY_HEIGHT)
+            .remove("remote_target_package")
             .apply()
         virtualDisplay?.release()
         virtualDisplay = null
