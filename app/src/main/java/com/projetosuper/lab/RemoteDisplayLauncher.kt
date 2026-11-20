@@ -25,6 +25,9 @@ object RemoteDisplayLauncher {
             "Este aparelho não oferece suporte a atividades em displays secundários."
         }
         val prefs = context.getSharedPreferences("projeto_super_device", Context.MODE_PRIVATE)
+        check(prefs.getBoolean("app_control_authorized", false)) {
+            "A autorização geral do Projeto Super não está ativa."
+        }
         val displayId = prefs.getInt(PREF_DISPLAY_ID, android.view.Display.INVALID_DISPLAY)
         check(displayId != android.view.Display.INVALID_DISPLAY) {
             "O ambiente virtual ainda não está ativo. Inicie primeiro a sessão visual."
