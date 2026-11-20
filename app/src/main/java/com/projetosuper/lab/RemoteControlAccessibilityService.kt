@@ -197,7 +197,9 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         val path = Path().apply { moveTo(x, y) }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
         val displayId = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
-            .getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.DEFAULT_DISPLAY)
+            .getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.INVALID_DISPLAY)
+        if (displayId == android.view.Display.INVALID_DISPLAY ||
+            displayId == android.view.Display.DEFAULT_DISPLAY) return false
         val gesture = GestureDescription.Builder()
             .setDisplayId(displayId)
             .addStroke(GestureDescription.StrokeDescription(path, 0, 80))
