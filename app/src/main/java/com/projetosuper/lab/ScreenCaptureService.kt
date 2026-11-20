@@ -82,6 +82,9 @@ class ScreenCaptureService : LifecycleService() {
      */
     private fun startVirtualDisplay() {
         try {
+            check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                "O controle isolado exige Android 11 ou superior."
+            }
             check(packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_ACTIVITIES_ON_SECONDARY_DISPLAYS)) {
                 "Este Android não declara suporte a atividades em displays secundários."
             }
