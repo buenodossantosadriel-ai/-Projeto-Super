@@ -149,7 +149,7 @@ class MainActivity : ComponentActivity() {
                 deviceError.value = if (granted) {
                     "Notificações autorizadas. A captura de tela ainda exigirá a confirmação nativa do Android quando a transmissão for iniciada."
                 } else {
-                    "Notificações não autorizadas. A transmissão ainda pode depender das regras do Android para serviços em primeiro plano."
+                    "Notificações não autorizadas. A tela e a câmera ainda podem ser compartilhadas conforme as regras do Android; sessões de microfone exigem essa permissão."
                 }
             }
             val notificationPermissionRequested = remember { mutableStateOf(false) }
