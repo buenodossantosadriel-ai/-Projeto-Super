@@ -193,11 +193,13 @@ class ScreenCaptureService : LifecycleService() {
         val scaledHeight = (image.height * scale).toInt().coerceAtLeast(1)
         val scaled = Bitmap.createScaledBitmap(cropped, scaledWidth, scaledHeight, true)
         val out = ByteArrayOutputStream()
-        scaled.compress(Bitmap.CompressFormat.JPEG, 58, out)
+        val compressed = scaled.compress(Bitmap.CompressFormat.JPEG, 58, out)
         if (scaled !== cropped) scaled.recycle()
         cropped.recycle()
         padded.recycle()
-        return out.toByteArray()
+        val jpeg = out.toByteArray()
+        return if (compressed && jpeg.size >= 4 &&
+            jpeg[0] == 0xFF.toByte() && jpeg[1] == 0xD8.toByte()) jpeg else null
     }
 
     private fun startStopCommandWatcher() {
