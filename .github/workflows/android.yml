@@ -101,6 +101,9 @@ jobs:
           assert 'sendText.disabled=!canRemote' in dashboard
           assert "remoteControlReady()" in capture
           assert 'getBoolean("app_control_authorized"' in capture
+          assert '.remove("remote_target_package")' in capture
+          assert "pendingCleanupError" in backend
+          assert 'getBoolean("app_control_authorized"' in launcher
           assert "WebRTC" not in all_kotlin + dashboard
           print("Arquitetura isolada, permissões, fila de comandos e transporte JPEG verificados.")
           PY
