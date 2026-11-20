@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
+import android.media.projection.MediaProjectionConfig
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -50,6 +51,15 @@ import org.json.JSONObject
 data class LaunchableApp(val label: String, val packageName: String)
 
 class MainActivity : ComponentActivity() {
+    private fun buildScreenCaptureIntent(): Intent {
+        val manager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        return if (Build.VERSION.SDK_INT >= 34) {
+            manager.createScreenCaptureIntent(MediaProjectionConfig.createConfigForDefaultDisplay())
+        } else {
+            manager.createScreenCaptureIntent()
+        }
+    }
+
     private fun loadLaunchableApps(): List<LaunchableApp> {
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         return packageManager.queryIntentActivities(intent, 0)
@@ -240,8 +250,7 @@ class MainActivity : ComponentActivity() {
                                         if (!busy.value && pendingScreenRequestId.value == null) {
                                             pendingScreenRequestId.value = candidate.optString("id")
                                             busy.value = true
-                                            val manager = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-                                            screenCaptureLauncher.launch(manager.createScreenCaptureIntent())
+                                            screenCaptureLauncher.launch(buildScreenCaptureIntent())
                                         }
                                         break
                                     }
@@ -528,8 +537,7 @@ class MainActivity : ComponentActivity() {
                                             when (action) {
                                                 "screen_share" -> {
                                                     pendingScreenRequestId.value = request.optString("id")
-                                                    val manager = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-                                                    screenCaptureLauncher.launch(manager.createScreenCaptureIntent())
+                                                    screenCaptureLauncher.launch(buildScreenCaptureIntent())
                                                 }
                                                 else -> {
                                                     if (action.startsWith("open_app:") || action.startsWith("tap:") ||
