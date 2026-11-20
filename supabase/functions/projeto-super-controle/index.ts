@@ -191,36 +191,35 @@ Deno.serve(async (req: Request) => {
 
     if (action === "register_device") {
       if (deviceSecret.length < 40) return respond({ ok: false, error: "Chave de dispositivo inválida." }, 400);
-      // Vínculo automático à conta proprietária do Projeto Super.
-      // O segredo aleatório da instalação continua obrigatório para atualizar um registro existente.
-      const ownerUserId = "fbde6bdd-35ba-4738-b523-74d71fcd3593";
+      // Novas instalações ficam pendentes até o administrador aprovar o aparelho.
+      // Revalida o segredo da instalação sem trocar proprietário nem reativar vínculos revogados.
       const deviceId = String(body.device_id || "");
       const deviceName = String(body.device_name || "Dispositivo Android").slice(0, 80);
       let row;
       if (deviceId) {
         const { data, error } = await admin.from("projeto_super_devices").update({
           device_name: deviceName,
-          owner_user_id: ownerUserId,
-          status: "paired",
-          pairing_code_hash: null,
-          pairing_expires_at: null,
         }).eq("id", deviceId).eq("device_secret_hash", deviceHash)
           .in("status", ["unpaired", "paired"])
-          .or("owner_user_id.is.null,owner_user_id.eq." + ownerUserId)
-          .select("id").maybeSingle();
-        if (error || !data) return respond({ ok: false, error: "Dispositivo não encontrado, revogado ou não autorizado para esta conta." }, 401);
+          .select("id,status,owner_user_id").maybeSingle();
+        if (error || !data) return respond({ ok: false, error: "Dispositivo não encontrado, revogado ou chave inválida." }, 401);
         row = data;
       } else {
         const { data, error } = await admin.from("projeto_super_devices").insert({
           device_secret_hash: deviceHash,
           device_name: deviceName,
-          owner_user_id: ownerUserId,
-          status: "paired",
-        }).select("id").single();
-        if (error || !data) return respond({ ok: false, error: "Não foi possível registrar e vincular o dispositivo." }, 500);
+          owner_user_id: null,
+          status: "unpaired",
+        }).select("id,status,owner_user_id").single();
+        if (error || !data) return respond({ ok: false, error: "Não foi possível registrar o dispositivo." }, 500);
         row = data;
       }
-      return respond({ ok: true, device_id: row.id, status: "paired", paired: true }, 200);
+      return respond({
+        ok: true,
+        device_id: row.id,
+        status: row.status,
+        paired: row.status === "paired",
+      }, 200);
     }
 
     if (action === "device_poll" || action === "device_sync_apps" || action === "device_decide" || action === "start_session" || action === "stop_session") {
@@ -404,7 +403,7 @@ Deno.serve(async (req: Request) => {
       for (const device of rows) {
         const active = sessionsByDevice.get(device.id) || null;
         const installedApps = appsByDevice.get(device.id) || [];
-        const lastActivity = device.last_seen_at || active?.started_at;
+        const lastActivity = active?.last_frame_at || active?.started_at;
         if (active && lastActivity && Date.now() - new Date(lastActivity).getTime() > 45000) {
           await admin.from("projeto_super_device_sessions").update({
             status: "stopped", stopped_at: new Date().toISOString(),
@@ -446,7 +445,7 @@ Deno.serve(async (req: Request) => {
       const { data: activeSession } = await admin.from("projeto_super_device_sessions").select("id,session_type,last_frame_at,started_at")
         .eq("device_id", deviceId).eq("owner_user_id", owner.id).eq("status", "active").limit(1);
       let hasActiveSession = Boolean(activeSession?.length);
-      const activeLastActivity = device.last_seen_at || activeSession?.[0]?.started_at;
+      const activeLastActivity = activeSession?.[0]?.last_frame_at || activeSession?.[0]?.started_at;
       if (hasActiveSession && activeLastActivity &&
           Date.now() - new Date(activeLastActivity).getTime() > 45000) {
         await admin.from("projeto_super_device_sessions").update({
