@@ -50,6 +50,15 @@ import org.json.JSONObject
 
 data class LaunchableApp(val label: String, val packageName: String)
 
+private fun isAccessibilityServiceEnabled(context: Context): Boolean {
+    val component = ComponentName(context, RemoteControlAccessibilityService::class.java)
+    val enabledServices = Secure.getString(
+        context.contentResolver,
+        Secure.ENABLED_ACCESSIBILITY_SERVICES
+    ).orEmpty()
+    return enabledServices.split(':').contains(component.flattenToString())
+}
+
 class MainActivity : ComponentActivity() {
     private fun buildScreenCaptureIntent(): Intent {
         val manager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
