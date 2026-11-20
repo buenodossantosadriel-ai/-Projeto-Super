@@ -43,7 +43,7 @@ class AudioCaptureService : LifecycleService() {
     @Volatile private var mode = "live"
     @Volatile private var stopping = false
     @Volatile private var starting = false
-    private var recorder: AudioRecord? = null
+    @Volatile private var recorder: AudioRecord? = null
     private val uploading = AtomicBoolean(false)
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -52,11 +52,17 @@ class AudioCaptureService : LifecycleService() {
             stopCapture()
             return START_NOT_STICKY
         }
+        val incomingSessionId = intent?.getStringExtra(EXTRA_SESSION_ID).orEmpty()
         if (starting || recorder != null || stopping) {
             android.util.Log.w("ProjetoSuperAudio", "Solicitação duplicada de microfone ignorada.")
+            if (incomingSessionId.isNotBlank() && incomingSessionId != sessionId) {
+                CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                    try { ControlApi.stopSession(this@AudioCaptureService, incomingSessionId) } catch (_: Exception) {}
+                }
+            }
             return START_NOT_STICKY
         }
-        sessionId = intent?.getStringExtra(EXTRA_SESSION_ID).orEmpty()
+        sessionId = incomingSessionId
         mode = intent?.getStringExtra(EXTRA_MODE) ?: "live"
         if (sessionId.isBlank()) {
             stopSelf()
