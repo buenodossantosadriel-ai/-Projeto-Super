@@ -33,8 +33,6 @@ class ScreenCaptureService : LifecycleService() {
         const val ACTION_START = "com.projetosuper.lab.SCREEN_START"
         const val ACTION_STOP = "com.projetosuper.lab.SCREEN_STOP"
         const val EXTRA_SESSION_ID = "session_id"
-        const val EXTRA_RESULT_CODE = "projection_result_code"
-        const val EXTRA_RESULT_DATA = "projection_result_data"
         private const val CHANNEL_ID = "projeto_super_screen"
         private const val NOTIFICATION_ID = 4102
     }
