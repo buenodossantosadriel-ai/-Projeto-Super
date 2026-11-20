@@ -199,7 +199,7 @@ class CameraCaptureService : LifecycleService() {
         lifecycleScope.launch(Dispatchers.IO) {
             while (isActive) {
                 try {
-                    val response = ControlApi.poll(this@CameraCaptureService)
+                    val response = ControlApi.poll(this@CameraCaptureService, "camera")
                     val requests = response.optJSONArray("requests")
                     if (requests != null) {
                         for (i in 0 until requests.length()) {
