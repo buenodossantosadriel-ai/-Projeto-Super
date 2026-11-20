@@ -227,34 +227,42 @@ Deno.serve(async (req: Request) => {
       if (!device) return respond({ ok: false, error: "Chave do dispositivo inválida." }, 401);
       if (action === "device_poll") {
         const consumer = String(body.consumer || "");
-        const pendingQuery = admin.from("projeto_super_control_requests").select("id,action,created_at,expires_at")
-          .eq("device_id", device.id).eq("status", "pending").gt("expires_at", new Date().toISOString())
-          .order("created_at", { ascending: true }).limit(consumer ? 1 : 10);
-        const { data: requests } = await pendingQuery;
-        // Cada família de serviço recebe exclusivamente os comandos que deve executar.
+        // Cada consumidor recebe a solicitação pendente mais antiga que realmente consegue executar.
+        // Não basta consultar apenas a primeira da fila: uma ação de outro consumidor bloquearia
+        // todas as posteriores até expirar (head-of-line blocking).
         const allowedConsumers = ["activity", "accessibility", "screen", "audio", "camera"];
         if (!allowedConsumers.includes(consumer)) {
           return respond({ ok: false, error: "Consumidor de comandos inválido." }, 400);
         }
-        const oldest = requests?.[0];
-        if (!oldest) return respond({ ok: true, paired: device.status === "paired", requests: [] });
-        const action = String(oldest.action || "");
-        const isAppCommand = action.startsWith("open_app:") || action.startsWith("tap:") ||
-          action.startsWith("type_text:") || action.startsWith("swipe:") || action === "remote_back";
-        let expectedConsumer = isAppCommand ? "accessibility" : "activity";
-        if (action === "stop_session") {
-          const { data: activeSession } = await admin.from("projeto_super_device_sessions")
-            .select("session_type").eq("device_id", device.id).eq("status", "active")
-            .order("started_at", { ascending: false }).limit(1).maybeSingle();
-          const sessionType = activeSession?.session_type;
-          expectedConsumer = sessionType === "screen_share" ? "screen" :
-            (sessionType === "camera_front" || sessionType === "camera_back") ? "camera" :
-            (sessionType === "microphone_live" || sessionType === "microphone_record") ? "audio" : "activity";
+        const { data: requests, error: requestsError } = await admin.from("projeto_super_control_requests")
+          .select("id,action,created_at,expires_at")
+          .eq("device_id", device.id).eq("status", "pending").gt("expires_at", new Date().toISOString())
+          .order("created_at", { ascending: true }).limit(50);
+        if (requestsError) return respond({ ok: false, error: "Falha ao consultar solicitações pendentes." }, 500);
+        let selected: any = null;
+        for (const pending of requests || []) {
+          const pendingAction = String(pending.action || "");
+          const isAppCommand = pendingAction.startsWith("open_app:") || pendingAction.startsWith("tap:") ||
+            pendingAction.startsWith("type_text:") || pendingAction.startsWith("swipe:") || pendingAction === "remote_back";
+          let expectedConsumer = isAppCommand ? "accessibility" : "activity";
+          if (pendingAction === "stop_session") {
+            const { data: activeSession } = await admin.from("projeto_super_device_sessions")
+              .select("session_type").eq("device_id", device.id).eq("status", "active")
+              .order("started_at", { ascending: false }).limit(1).maybeSingle();
+            const sessionType = activeSession?.session_type;
+            expectedConsumer = sessionType === "screen_share" ? "screen" :
+              (sessionType === "camera_front" || sessionType === "camera_back") ? "camera" :
+              (sessionType === "microphone_live" || sessionType === "microphone_record") ? "audio" : "activity";
+          }
+          if (expectedConsumer === consumer) {
+            selected = pending;
+            break;
+          }
         }
         return respond({
           ok: true,
           paired: device.status === "paired",
-          requests: expectedConsumer === consumer ? [oldest] : [],
+          requests: selected ? [selected] : [],
         });
       }
       if (action === "device_sync_apps") {
