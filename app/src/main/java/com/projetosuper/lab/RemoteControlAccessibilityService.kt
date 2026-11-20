@@ -63,7 +63,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                                 val action = request.optString("action")
                                 if (action.startsWith("open_app:") ||
                                     action.startsWith("tap:") ||
-                                    action.startsWith("type_text:")) {
+                                    action.startsWith("type_text:") || action == "remote_back") {
                                     // Um único consumidor executa comandos, mesmo com a Activity em segundo plano.
                                     executeAuthorizedCommand(request)
                                     break
@@ -114,6 +114,11 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                     check(setFocusedText(value)) {
                         "Não foi possível inserir texto no campo focado do display remoto."
                     }
+                    ControlApi.decide(this, requestId, true)
+                    decided = true
+                }
+                action == "remote_back" -> {
+                    check(goBackOnVirtualDisplay()) { "O Android não aceitou o gesto Voltar no display virtual." }
                     ControlApi.decide(this, requestId, true)
                     decided = true
                 }
@@ -193,6 +198,14 @@ class RemoteControlAccessibilityService : AccessibilityService() {
             .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs.coerceIn(100, 1500)))
             .build()
         return dispatchGesture(gesture, null, null)
+    }
+
+    private fun goBackOnVirtualDisplay(): Boolean {
+        val prefs = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
+        val width = prefs.getInt(RemoteDisplayLauncher.PREF_DISPLAY_WIDTH, 0)
+        val height = prefs.getInt(RemoteDisplayLauncher.PREF_DISPLAY_HEIGHT, 0)
+        if (width <= 0 || height <= 0) return false
+        return swipe(2f, height * 0.5f, width * 0.65f, height * 0.5f, 320)
     }
 
     fun tapNormalized(x: Int, y: Int): Boolean {
