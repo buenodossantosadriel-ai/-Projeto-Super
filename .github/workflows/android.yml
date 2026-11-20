@@ -1,4 +1,4 @@
-name: Validar Projeto Super original
+name: Projeto Super original - gerar APK de teste identificável
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   build:
-    name: Validar código Android sem gerar APK
+    name: Validar e gerar APK do Projeto Super original
     runs-on: ubuntu-latest
     steps:
       - name: Baixar código
@@ -34,6 +34,27 @@ jobs:
 
       - name: Compilar fontes da variante release (sem gerar APK)
         run: gradle :app:compileReleaseKotlin
+
+      - name: Gerar APK instalável de teste do app original
+        run: gradle :app:assembleDebug
+
+      - name: Identificar e calcular hash do APK
+        run: |
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          sha256sum "$APK" | tee app/build/outputs/apk/debug/SHA256SUMS.txt
+          printf 'Projeto: Projeto Super original\\nBranch: android-native\\nCommit: %s\\nPackage: com.projetosuper.lab\\nBuild: debug para teste; assinatura pode não corresponder ao APK instalado\\n' "$GITHUB_SHA" > app/build/outputs/apk/debug/IDENTIFICACAO.txt
+
+      - name: Publicar APK e identificação
+        uses: actions/upload-artifact@v4
+        with:
+          name: projeto-super-original-teste
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/debug/SHA256SUMS.txt
+            app/build/outputs/apk/debug/IDENTIFICACAO.txt
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Validar JavaScript do dashboard
         run: |
