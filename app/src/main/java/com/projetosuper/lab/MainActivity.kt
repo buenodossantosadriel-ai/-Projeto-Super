@@ -159,7 +159,7 @@ class MainActivity : ComponentActivity() {
                     var lastAppsSyncAt = 0L
                     while (true) {
                         try {
-                            val response = ControlApi.poll(context)
+                            val response = ControlApi.poll(context, "activity")
                             devicePaired.value = response.optBoolean("paired")
                             val now = System.currentTimeMillis()
                             val shouldSyncApps = devicePaired.value && appControlAuthorized.value &&
