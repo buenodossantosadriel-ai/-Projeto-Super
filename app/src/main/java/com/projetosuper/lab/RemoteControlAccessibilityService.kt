@@ -181,9 +181,9 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         }
     }
 
-    private suspend fun tapNormalizedAndWait(x: Int, y: Int): Boolean {
+    private suspend fun tapNormalizedAndWait(x: Int, y: Int): Boolean = withContext(Dispatchers.Main) {
         val metrics = resources.displayMetrics
-        if (metrics.widthPixels <= 0 || metrics.heightPixels <= 0) return false
+        if (metrics.widthPixels <= 0 || metrics.heightPixels <= 0) return@withContext false
         val path = Path().apply {
             moveTo((x.coerceIn(0, 1000) / 1000f) * metrics.widthPixels,
                 (y.coerceIn(0, 1000) / 1000f) * metrics.heightPixels)
@@ -195,7 +195,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         val gesture = gestureBuilder
             .addStroke(GestureDescription.StrokeDescription(path, 0, 80))
             .build()
-        return suspendCancellableCoroutine { continuation ->
+        suspendCancellableCoroutine { continuation ->
             val accepted = dispatchGesture(gesture, object : GestureResultCallback() {
                 override fun onCompleted(gestureDescription: GestureDescription?) {
                     if (continuation.isActive) continuation.resume(true)
