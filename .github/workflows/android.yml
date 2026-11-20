@@ -44,7 +44,9 @@ jobs:
           assert "getMediaProjection(" not in capture
           assert "createVirtualDisplay(" in capture
           assert "VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY" in capture
+          assert "remove(RemoteDisplayLauncher.PREF_DISPLAY_ID)" in capture
           assert "setDisplayId(displayId)" in control
+          assert control.count("displayId == android.view.Display.DEFAULT_DISPLAY) return false") == 2
           assert "swipeNormalized" in control
           assert 'action.startsWith("swipe:")' in control
           assert "remote_target_package" in control
