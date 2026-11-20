@@ -177,8 +177,10 @@ class MainActivity : ComponentActivity() {
                                     "Telefone vinculado. Aguardando sua autorização geral para liberar os comandos remotos."
                                 !isAccessibilityServiceEnabled(context) ->
                                     "Autorização geral ativa. Ative o serviço de Acessibilidade nas configurações para abrir apps, tocar, digitar e navegar."
+                                Build.VERSION.SDK_INT < Build.VERSION_CODES.R ->
+                                    "Este aparelho pode instalar o Projeto Super, mas o controle isolado de aplicativos exige Android 11 ou superior."
                                 else ->
-                                    "Telefone vinculado e autorizado. Controle de aplicativos disponível; a tela será transmitida em JPEG após a confirmação do Android."
+                                    "Telefone vinculado e autorizado. Apps originais podem ser controlados no display virtual; a tela física não é capturada."
                             }
                             val requests = response.optJSONArray("requests")
                             if (pendingRequest.value == null && !busy.value && requests != null) {
