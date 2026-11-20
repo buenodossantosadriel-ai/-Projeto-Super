@@ -203,7 +203,7 @@ class MainActivity : ComponentActivity() {
                                             deviceError.value = "Aguardando a autorização geral inicial."
                                             continue
                                         }
-                                        if (!busy.value && pendingScreenRequestId.value == null) {
+                                        if (!busy.value) {
                                             busy.value = true
                                             try {
                                                 val response = ControlApi.decide(context, candidate.optString("id"), true)
@@ -503,8 +503,14 @@ class MainActivity : ComponentActivity() {
                                         try {
                                             when (action) {
                                                 "screen_share" -> {
-                                                    pendingScreenRequestId.value = request.optString("id")
-                                                    screenCaptureLauncher.launch(buildScreenCaptureIntent())
+                                                    val response = ControlApi.decide(context, request.optString("id"), true)
+                                                    val sessionId = response.optString("session_id")
+                                                    check(sessionId.isNotBlank()) { "O servidor não confirmou a sessão de display virtual." }
+                                                    createdSessionId = sessionId
+                                                    val start = Intent(context, ScreenCaptureService::class.java)
+                                                        .setAction(ScreenCaptureService.ACTION_START)
+                                                        .putExtra(ScreenCaptureService.EXTRA_SESSION_ID, sessionId)
+                                                    ContextCompat.startForegroundService(context, start)
                                                 }
                                                 else -> {
                                                     if (action == "camera_front" || action == "camera_back") {
