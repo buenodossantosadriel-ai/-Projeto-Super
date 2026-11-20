@@ -111,7 +111,7 @@ class MainActivity : ComponentActivity() {
             ) { granted ->
                 permissionRefresh.value++
                 deviceError.value = if (granted) {
-                    "Notificações autorizadas. A captura de tela ainda exigirá a confirmação nativa do Android quando a transmissão for iniciada."
+                    "Notificações autorizadas. As funções de câmera e microfone continuam dependendo das permissões específicas do Android."
                 } else {
                     "Notificações não autorizadas. A tela e a câmera ainda podem ser compartilhadas conforme as regras do Android; sessões de microfone exigem essa permissão."
                 }
@@ -379,7 +379,7 @@ class MainActivity : ComponentActivity() {
                                 enabled = appControlAuthorized.value,
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Revogar autorização geral") }
-                            Text("A autorização vale para todos os aplicativos identificados. A acessibilidade ainda precisa ser ativada manualmente no Android; captura de tela, câmera e microfone continuam sujeitos às confirmações nativas obrigatórias.")
+                            Text("A autorização vale para todos os aplicativos identificados. A Acessibilidade precisa ser ativada manualmente nas configurações do Android. Câmera e microfone dependem de suas permissões específicas; a transmissão JPEG do display virtual não usa MediaProjection.")
                         }
                         item {
                             Text("Aplicativos disponíveis", style = MaterialTheme.typography.titleLarge)
@@ -426,7 +426,7 @@ class MainActivity : ComponentActivity() {
                         text = {
                             Text(
                                 "Uma única autorização habilita o controle remoto dos aplicativos identificados e permite iniciar sessões solicitadas pelo dashboard. " +
-                                    "O Android continuará exibindo suas confirmações nativas obrigatórias para captura de tela, câmera e microfone. " +
+                                    "A Acessibilidade ainda precisa ser ativada manualmente nas configurações do Android. Câmera e microfone continuarão exigindo suas permissões específicas. " +
                                     "A autorização pode ser revogada neste aplicativo."
                             )
                         },
