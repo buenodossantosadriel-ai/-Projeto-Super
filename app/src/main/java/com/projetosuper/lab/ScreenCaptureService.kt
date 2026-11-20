@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Mantém a sessão de captura em primeiro plano e envia quadros JPEG obtidos
  * pelo RemoteControlAccessibilityService.takeScreenshot().
- * Não cria display virtual, não usa MediaProjection e não usa WebRTC.
+ * Não cria display virtual e não usa MediaProjection.
  */
 class ScreenCaptureService : LifecycleService() {
     companion object {
