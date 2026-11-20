@@ -135,6 +135,9 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     val options = ActivityOptions.makeBasic().setLaunchDisplayId(displayId)
                     withContext(Dispatchers.Main) { startActivity(home, options.toBundle()) }
+                    check(waitForAnyWindowOnDisplay(displayId)) {
+                        "O Android não confirmou a tela inicial no display remoto."
+                    }
                 }
                 action == "remote_back" -> {
                     error("O Android não oferece Voltar isolado por display pela ação global de acessibilidade. O comando foi bloqueado para não afetar a tela física.")
@@ -159,6 +162,17 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                     try { root?.packageName?.toString() == packageName }
                     finally { root?.recycle() }
                 }
+            }
+            if (found) return true
+            delay(150)
+        }
+        return false
+    }
+
+    private suspend fun waitForAnyWindowOnDisplay(displayId: Int): Boolean {
+        repeat(20) {
+            val found = withContext(Dispatchers.Main) {
+                getWindowsOnAllDisplays()[displayId].orEmpty().isNotEmpty()
             }
             if (found) return true
             delay(150)
@@ -219,28 +233,6 @@ class RemoteControlAccessibilityService : AccessibilityService() {
     }
 
     private fun packageNameOfSelf(): String = packageName
-
-    /** Insere texto somente no campo que está focado naquele instante. */
-    fun setFocusedText(value: String): Boolean {
-        if (value.isBlank() || value.length > 2000) return false
-        val root = rootInActiveWindow ?: return false
-        try {
-            val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-                ?: findFocusedEditable(root)
-                ?: return false
-            try {
-                if (!focused.isEditable || !focused.isVisibleToUser) return false
-                val args = Bundle().apply {
-                    putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value)
-                }
-                return focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-            } finally {
-                focused.recycle()
-            }
-        } finally {
-            root.recycle()
-        }
-    }
 
     private fun findFocusedEditable(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
         if (node.isFocused && node.isEditable && node.isVisibleToUser) return AccessibilityNodeInfo.obtain(node)
