@@ -110,6 +110,7 @@ class MainActivity : ComponentActivity() {
                 mutableStateOf(context.getSharedPreferences("projeto_super_device", Context.MODE_PRIVATE)
                     .getBoolean("app_control_authorized", false))
             }
+            val showInitialAuthorization = remember { mutableStateOf(!appControlAuthorized.value) }
             val deviceStatus = remember { mutableStateOf("Registrando dispositivo seguro...") }
             val deviceError = remember { mutableStateOf<String?>(null) }
             val pendingRequest = remember { mutableStateOf<JSONObject?>(null) }
@@ -416,6 +417,45 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
+                }
+
+                if (showInitialAuthorization.value && !appControlAuthorized.value) {
+                    AlertDialog(
+                        onDismissRequest = { },
+                        title = { Text("Autorização geral do Projeto Super") },
+                        text = {
+                            Text(
+                                "Uma única autorização habilita o controle remoto dos aplicativos identificados e permite iniciar sessões solicitadas pelo dashboard. " +
+                                    "O Android continuará exibindo suas confirmações nativas obrigatórias para captura de tela, câmera e microfone. " +
+                                    "A autorização pode ser revogada neste aplicativo."
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                appControlAuthorized.value = true
+                                context.getSharedPreferences("projeto_super_device", Context.MODE_PRIVATE)
+                                    .edit().putBoolean("app_control_authorized", true).apply()
+                                showInitialAuthorization.value = false
+                                appsSynced.value = false
+                                scope.launch {
+                                    try {
+                                        if (devicePaired.value) {
+                                            ControlApi.syncApps(context, loadLaunchableApps())
+                                            appsSynced.value = true
+                                        }
+                                        deviceError.value = "Autorização geral concedida."
+                                    } catch (error: Exception) {
+                                        deviceError.value = error.message ?: "Autorização salva; falha ao sincronizar aplicativos."
+                                    }
+                                }
+                            }) { Text("Autorizar") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showInitialAuthorization.value = false }) {
+                                Text("Agora não")
+                            }
+                        }
+                    )
                 }
 
                 val request = pendingRequest.value
