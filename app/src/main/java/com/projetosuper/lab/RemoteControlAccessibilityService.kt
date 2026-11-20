@@ -324,12 +324,12 @@ class RemoteControlAccessibilityService : AccessibilityService() {
     }
 
     /** Insere texto somente no campo editável focado do aplicativo atualmente controlado. */
-    fun setFocusedText(value: String): Boolean {
-        if (value.isBlank() || value.length > 2000) return false
+    private suspend fun setFocusedText(value: String): Boolean = withContext(Dispatchers.Main) {
+        if (value.isBlank() || value.length > 2000) return@withContext false
         if (!getSharedPreferences("projeto_super_device", MODE_PRIVATE)
-                .getBoolean("app_control_authorized", false)) return false
+                .getBoolean("app_control_authorized", false)) return@withContext false
         val expectedPackage = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
-            .getString("remote_target_package", null) ?: return false
+            .getString("remote_target_package", null) ?: return@withContext false
         val targetWindow = windows.firstOrNull { window ->
             if (!window.isFocused && !window.isActive) return@firstOrNull false
             val candidateRoot = window.root ?: return@firstOrNull false
@@ -338,19 +338,19 @@ class RemoteControlAccessibilityService : AccessibilityService() {
             } finally {
                 candidateRoot.recycle()
             }
-        } ?: return false
-        val root = targetWindow.root ?: return false
+        } ?: return@withContext false
+        val root = targetWindow.root ?: return@withContext false
         try {
-            if (root.packageName?.toString() != expectedPackage) return false
+            if (root.packageName?.toString() != expectedPackage) return@withContext false
             val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
                 ?: findFocusedEditable(root)
-                ?: return false
+                ?: return@withContext false
             try {
-                if (!focused.isEditable || !focused.isVisibleToUser) return false
+                if (!focused.isEditable || !focused.isVisibleToUser) return@withContext false
                 val args = Bundle().apply {
                     putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value)
                 }
-                return focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
             } finally {
                 focused.recycle()
             }
