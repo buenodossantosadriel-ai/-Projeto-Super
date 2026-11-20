@@ -90,8 +90,8 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         val action = request.optString("action")
         if (requestId.isBlank()) return false
         try {
-            val displayId = ScreenCaptureService.remoteDisplayId
-                ?: error("A captura do display virtual não está ativa.")
+            val displayId = awaitRemoteDisplayId()
+                ?: error("A captura do display virtual não foi iniciada dentro do tempo esperado.")
             when {
                 action.startsWith("open_app:") -> {
                     val packageName = action.substringAfter("open_app:")
@@ -151,6 +151,14 @@ class RemoteControlAccessibilityService : AccessibilityService() {
             android.util.Log.e("ProjetoSuperRemote", "Comando remoto recusado: ${error.message}", error)
             return false
         }
+    }
+
+    private suspend fun awaitRemoteDisplayId(): Int? {
+        repeat(20) {
+            ScreenCaptureService.remoteDisplayId?.let { return it }
+            delay(250)
+        }
+        return null
     }
 
     private suspend fun waitForPackageOnDisplay(packageName: String, displayId: Int): Boolean {
