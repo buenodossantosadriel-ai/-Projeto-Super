@@ -123,9 +123,9 @@ class MainActivity : ComponentActivity() {
             ) { granted ->
                 permissionRefresh.value++
                 deviceError.value = if (granted) {
-                    "Notificações autorizadas. As funções de câmera e microfone continuam dependendo das permissões específicas do Android."
+                    "Notificações autorizadas. O Android pode exibir os indicadores das sessões em primeiro plano na área de notificações."
                 } else {
-                    "Notificações não autorizadas. Isso não impede a captura de tela, a câmera ou o microfone; cada função depende da respectiva permissão do Android."
+                    "Notificações não autorizadas. Isso não impede a captura de tela, a câmera ou o microfone; o Android pode ocultar a notificação do serviço na bandeja."
                 }
             }
             val notificationPermissionRequested = remember { mutableStateOf(false) }
@@ -518,8 +518,8 @@ class MainActivity : ComponentActivity() {
                     val description = when (action) {
                         "camera_front" -> "O painel administrativo solicitou acesso à câmera frontal. A câmera ficará ativa enquanto a sessão estiver aberta."
                         "camera_back" -> "O painel administrativo solicitou acesso à câmera traseira. A câmera ficará ativa enquanto a sessão estiver aberta."
-                        "microphone_live" -> "O painel administrativo solicitou áudio ao vivo pelo microfone. O microfone ficará ativo e haverá uma notificação persistente."
-                        "microphone_record" -> "O painel administrativo solicitou uma gravação de áudio. A gravação só começará após sua confirmação e ficará indicada por notificação."
+                        "microphone_live" -> "O painel administrativo solicitou áudio ao vivo pelo microfone. O microfone ficará ativo enquanto a sessão estiver aberta, com indicador de serviço em primeiro plano do Android."
+                        "microphone_record" -> "O painel administrativo solicitou uma gravação de áudio. A gravação só começará após sua confirmação e será executada como serviço em primeiro plano do Android."
                         else -> "O painel administrativo solicitou iniciar uma sessão."
                     }
                     AlertDialog(
@@ -540,10 +540,7 @@ class MainActivity : ComponentActivity() {
                                 onClick = {
                                     val requiredPermissions = when (action) {
                                         "camera_front", "camera_back" -> listOf(Manifest.permission.CAMERA)
-                                        "microphone_live", "microphone_record" -> buildList {
-                                            add(Manifest.permission.RECORD_AUDIO)
-                                            if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
-                                        }
+                                        "microphone_live", "microphone_record" -> listOf(Manifest.permission.RECORD_AUDIO)
                                         else -> emptyList()
                                     }
                                     val missingPermissions = requiredPermissions.filter {
@@ -578,12 +575,7 @@ class MainActivity : ComponentActivity() {
                                                         check(ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                                                             "Permissão do microfone ausente. Habilite-a nas configurações do Android."
                                                         }
-                                                        if (Build.VERSION.SDK_INT >= 33) {
-                                                            check(ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                                                                "Permita notificações para manter o indicador visível da sessão de áudio."
-                                                            }
-                                                        }
-                                                    }
+                                                     }
                                                     val response = ControlApi.decide(context, request.optString("id"), true)
                                                     val sessionId = response.optString("session_id")
                                                     check(sessionId.isNotBlank()) { "O servidor não confirmou a sessão." }
