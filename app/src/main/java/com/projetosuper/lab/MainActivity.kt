@@ -540,7 +540,7 @@ class MainActivity : ComponentActivity() {
                                                 "screen_share" -> {
                                                     val response = ControlApi.decide(context, request.optString("id"), true)
                                                     val sessionId = response.optString("session_id")
-                                                    check(sessionId.isNotBlank()) { "O servidor não confirmou a sessão de display virtual." }
+                                                    check(sessionId.isNotBlank()) { "O servidor não confirmou a sessão de captura JPEG." }
                                                     createdSessionId = sessionId
                                                     val start = Intent(context, ScreenCaptureService::class.java)
                                                         .setAction(ScreenCaptureService.ACTION_START)
