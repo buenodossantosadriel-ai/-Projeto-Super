@@ -89,50 +89,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private suspend fun runAuthorizedAppCommand(context: Context, request: JSONObject) {
-        val requestId = request.optString("id")
-        val action = request.optString("action")
-        require(requestId.isNotBlank()) { "Solicitação inválida." }
-        when {
-            action.startsWith("open_app:") -> {
-                val packageName = action.substringAfter("open_app:")
-                check(packageName != context.packageName && loadLaunchableApps().any { it.packageName == packageName }) {
-                    "O aplicativo não está na lista identificada deste aparelho."
-                }
-                val launchIntent = createAppLaunchIntent(packageName)
-                    ?: error("O Android não disponibilizou uma atividade de inicialização para este aplicativo.")
-                ControlApi.decide(context, requestId, true)
-                context.startActivity(launchIntent)
-            }
-            action.startsWith("type_text:") -> {
-                val text = action.substringAfter("type_text:")
-                check(text.isNotBlank() && text.length <= 2000) { "Texto vazio ou maior que 2.000 caracteres." }
-                val service = RemoteControlAccessibilityService.activeInstance
-                    ?: error("Ative a acessibilidade do Projeto Super nas configurações do Android.")
-                ControlApi.decide(context, requestId, true)
-                check(service.setFocusedText(text)) {
-                    "Não foi encontrado um campo de texto ativo ou o aplicativo não permite preenchimento remoto."
-                }
-            }
-            action.startsWith("tap:") -> {
-                val parts = action.split(":")
-                check(parts.size == 3) { "Coordenadas inválidas." }
-                val x = parts[1].toIntOrNull() ?: error("Coordenada X inválida.")
-                val y = parts[2].toIntOrNull() ?: error("Coordenada Y inválida.")
-                check(x in 0..1000 && y in 0..1000) { "Toque fora dos limites." }
-                val service = RemoteControlAccessibilityService.activeInstance
-                    ?: error("Ative a acessibilidade do Projeto Super nas configurações do Android.")
-                ControlApi.decide(context, requestId, true)
-                check(service.tapNormalized(x, y)) { "O Android não aceitou o toque." }
-            }
-            action == "remote_back" || action == "remote_home" -> {
-                val service = RemoteControlAccessibilityService.activeInstance
-                    ?: error("Ative a acessibilidade do Projeto Super nas configurações do Android.")
-                ControlApi.decide(context, requestId, true)
-                val ok = if (action == "remote_back") service.goBack() else service.goHome()
-                check(ok) { "O Android não aceitou o comando." }
-            }
-            else -> error("Comando de aplicativo não reconhecido.")
-        }
+        val service = RemoteControlAccessibilityService.activeInstance
+            ?: error("Ative a acessibilidade do Projeto Super nas configurações do Android.")
+        service.executeAuthorizedCommand(request)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -251,7 +210,6 @@ class MainActivity : ComponentActivity() {
                                         try {
                                             ControlApi.decide(context, candidate.optString("id"), true)
                                             context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
-                                            context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
                                             context.startService(Intent(context, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP))
                                         } catch (error: Exception) {
                                             deviceError.value = error.message ?: "Não foi possível encerrar a sessão."
@@ -333,7 +291,6 @@ class MainActivity : ComponentActivity() {
                             )
                             Button(
                                 onClick = {
-                                    context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
                                     context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
                                     context.startService(Intent(context, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP))
                                 },
@@ -565,38 +522,12 @@ class MainActivity : ComponentActivity() {
                                                     screenCaptureLauncher.launch(manager.createScreenCaptureIntent())
                                                 }
                                                 else -> {
-                                                    if (action.startsWith("open_app:")) {
-                                                        val packageName = action.substringAfter("open_app:")
-                                                        val launchIntent = createAppLaunchIntent(packageName)
-                                                        check(launchIntent != null) {
-                                                            "O Android não encontrou uma tela inicial para este aplicativo. Atualize a lista de apps e tente novamente."
-                                                        }
-                                                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-                                                        context.startActivity(launchIntent)
-                                                        ControlApi.decide(context, request.optString("id"), true)
-                                                        deviceError.value = null
-                                                        return@launch
-                                                    }
-                                                    if (action.startsWith("tap:") || action == "remote_back" || action == "remote_home") {
-                                                        val service = RemoteControlAccessibilityService.activeInstance
-                                                        check(service != null) {
-                                                            "Ative a acessibilidade do Projeto Super nas configurações do Android."
-                                                        }
-                                                        if (action.startsWith("tap:")) {
-                                                            val parts = action.split(":")
-                                                            check(parts.size == 3) { "Coordenadas inválidas." }
-                                                            val x = parts[1].toIntOrNull() ?: error("Coordenada X inválida.")
-                                                            val y = parts[2].toIntOrNull() ?: error("Coordenada Y inválida.")
-                                                            check(x in 0..1000 && y in 0..1000) { "Toque fora dos limites." }
-                                                            ControlApi.decide(context, request.optString("id"), true)
-                                                            check(service.tapNormalized(x, y)) { "O Android não aceitou o toque." }
-                                                        } else {
-                                                            ControlApi.decide(context, request.optString("id"), true)
-                                                            val ok = if (action == "remote_back") service.goBack() else service.goHome()
-                                                            check(ok) { "O Android não aceitou o comando." }
-                                                        }
-                                                        return@launch
-                                                    }
+                                                    if (action.startsWith("open_app:") || action.startsWith("tap:") ||
+                                                action.startsWith("type_text:") || action == "remote_back" || action == "remote_home") {
+                                                runAuthorizedAppCommand(context, request)
+                                                deviceError.value = null
+                                                return@launch
+                                            }
                                                     if (action == "camera_front" || action == "camera_back") {
                                                         check(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
                                                             "Permissão da câmera ausente. Habilite-a nas configurações do Android."
