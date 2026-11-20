@@ -58,11 +58,17 @@ class CameraCaptureService : LifecycleService() {
             stopCapture()
             return START_NOT_STICKY
         }
+        val incomingSessionId = intent?.getStringExtra(EXTRA_SESSION_ID).orEmpty()
         if (starting || cameraProvider != null || stopping) {
             android.util.Log.w("ProjetoSuperCamera", "Solicitação duplicada de câmera ignorada.")
+            if (incomingSessionId.isNotBlank() && incomingSessionId != sessionId) {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    try { ControlApi.stopSession(this@CameraCaptureService, incomingSessionId) } catch (_: Exception) {}
+                }
+            }
             return START_NOT_STICKY
         }
-        sessionId = intent?.getStringExtra(EXTRA_SESSION_ID).orEmpty()
+        sessionId = incomingSessionId
         val lens = intent?.getStringExtra(EXTRA_LENS) ?: "back"
         if (sessionId.isBlank()) {
             stopSelf()
