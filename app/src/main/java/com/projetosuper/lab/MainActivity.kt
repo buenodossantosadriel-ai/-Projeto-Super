@@ -182,7 +182,7 @@ class MainActivity : ComponentActivity() {
                                 !isAccessibilityServiceEnabled(context) ->
                                     "Autorização geral ativa. Ative o serviço de Acessibilidade nas configurações para abrir apps, tocar, digitar e navegar."
                                 else ->
-                                    "Telefone vinculado e autorizado. Apps originais podem ser controlados no display virtual; a tela física não é capturada."
+                                    "Requisitos básicos detectados. O fabricante ou o aplicativo pode bloquear atividades em display secundário; mantenha o Projeto Super aberto para iniciar novas sessões."
                             }
                             val requests = response.optJSONArray("requests")
                             if (pendingRequest.value == null && !busy.value && requests != null) {
