@@ -197,7 +197,7 @@ class MainActivity : ComponentActivity() {
                                 lastAppsSyncAt = now
                             }
                             deviceStatus.value = if (devicePaired.value) {
-                                "Dispositivo vinculado. Com autorização geral ativa, comandos de aplicativos seguem a permissão concedida neste aparelho."
+                                "Dispositivo vinculado. Com autorização geral ativa, os comandos de aplicativos são processados pelo serviço de acessibilidade e enviados ao display virtual."
                             } else {
                                 "Conectando automaticamente à conta administrativa..."
                             }
