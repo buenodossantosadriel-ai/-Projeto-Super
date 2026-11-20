@@ -492,19 +492,19 @@ Deno.serve(async (req: Request) => {
         await clearAudioChunks(admin, [activeSession[0].id], "live");
         hasActiveSession = false;
       }
-      const isVirtualDisplayCommand = isOpenApp || isRemoteNavigation || isTap || isSwipe || isTypeText;
-      if (isVirtualDisplayCommand &&
+      const isScreenControlCommand = isOpenApp || isRemoteNavigation || isTap || isSwipe || isTypeText;
+      if (isScreenControlCommand &&
           (!hasActiveSession || activeSession?.[0]?.session_type !== "screen_share")) {
         return respond({
           ok: false,
-          error: "Abrir aplicativos, voltar, tocar, rolar e digitar exigem uma sessão ativa do display virtual JPEG."
+          error: "Abrir aplicativos, voltar, tocar, rolar e digitar exigem uma sessão ativa de captura JPEG."
         }, 409);
       }
       if (requestedAction === "stop_session" && !hasActiveSession) {
         return respond({ ok: false, error: "Não há sessão ativa para encerrar." }, 409);
       }
-      // Os comandos de aplicativos só podem ser executados dentro de uma sessão JPEG
-      // ativa do display virtual. A Acessibilidade é verificada no próprio Android.
+      // Os comandos de aplicativos só podem ser executados dentro de uma sessão JPEG ativa.
+      // A Acessibilidade é verificada no próprio Android.
       const isRemoteCommand = isRemoteNavigation || isTap || isSwipe || isTypeText || (isOpenApp && validPackage);
       if (requestedAction !== "stop_session" && hasActiveSession && !isRemoteCommand) {
         return respond({ ok: false, error: "Encerre a sessão atual antes de iniciar outra." }, 409);
