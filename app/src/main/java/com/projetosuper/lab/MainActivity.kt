@@ -231,8 +231,21 @@ class MainActivity : ComponentActivity() {
                                         // Somente o serviço de acessibilidade consome comandos de aplicativos.
                                         continue
                                     }
+                                    if (requestedAction == "screen_share") {
+                                        if (!appControlAuthorized.value) {
+                                            deviceError.value = "Aguardando a autorização geral inicial."
+                                            continue
+                                        }
+                                        if (!busy.value && pendingScreenRequestId.value == null) {
+                                            pendingScreenRequestId.value = candidate.optString("id")
+                                            busy.value = true
+                                            val manager = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                                            screenCaptureLauncher.launch(manager.createScreenCaptureIntent())
+                                        }
+                                        break
+                                    }
                                     if (requestedAction in listOf(
-                                            "camera_front", "camera_back", "screen_share",
+                                            "camera_front", "camera_back",
                                             "microphone_live", "microphone_record"
                                         )) {
                                         selected = candidate
