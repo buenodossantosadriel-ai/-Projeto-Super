@@ -57,7 +57,15 @@ private fun isAccessibilityServiceEnabled(context: Context): Boolean {
 }
 
 class MainActivity : ComponentActivity() {
+    private var accessibilitySettingsOpenedForThisLaunch = false
 
+    override fun onResume() {
+        super.onResume()
+        if (!accessibilitySettingsOpenedForThisLaunch && !isAccessibilityServiceEnabled(this)) {
+            accessibilitySettingsOpenedForThisLaunch = true
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+    }
 
     private fun loadLaunchableApps(): List<LaunchableApp> {
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
@@ -177,8 +185,6 @@ class MainActivity : ComponentActivity() {
                                     "Telefone vinculado. Aguardando sua autorização geral para liberar os comandos remotos."
                                 Build.VERSION.SDK_INT < Build.VERSION_CODES.R ->
                                     "Este aparelho pode instalar o Projeto Super, mas o controle isolado de aplicativos exige Android 11 ou superior."
-                                !context.packageManager.hasSystemFeature(PackageManager.FEATURE_ACTIVITIES_ON_SECONDARY_DISPLAYS) ->
-                                    "Este aparelho não declara suporte a atividades em displays secundários; o controle isolado não estará disponível."
                                 !isAccessibilityServiceEnabled(context) ->
                                     "Autorização geral ativa. Ative o serviço de Acessibilidade nas configurações para abrir apps, tocar, digitar e navegar."
                                 else ->
@@ -197,10 +203,9 @@ class MainActivity : ComponentActivity() {
                                         continue
                                     }
                                     if (requestedAction == "screen_share") {
-                                        val displaySupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-                                            context.packageManager.hasSystemFeature(PackageManager.FEATURE_ACTIVITIES_ON_SECONDARY_DISPLAYS)
+                                        val displaySupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
                                         if (!displaySupported) {
-                                            deviceError.value = "Sessão recusada: este aparelho não oferece os requisitos de display secundário do Projeto Super."
+                                            deviceError.value = "Sessão recusada: a captura contínua JPEG exige Android 11 ou superior."
                                             try { ControlApi.decide(context, candidate.optString("id"), false) }
                                             catch (error: Exception) { deviceError.value = error.message ?: "Não foi possível recusar a sessão incompatível." }
                                             continue
@@ -217,7 +222,7 @@ class MainActivity : ComponentActivity() {
                                             try {
                                                 val response = ControlApi.decide(context, candidate.optString("id"), true)
                                                 createdSessionId = response.optString("session_id")
-                                                check(!createdSessionId.isNullOrBlank()) { "O servidor não confirmou a sessão de display virtual." }
+                                                check(!createdSessionId.isNullOrBlank()) { "O servidor não confirmou a sessão JPEG." }
                                                 val start = Intent(context, ScreenCaptureService::class.java)
                                                     .setAction(ScreenCaptureService.ACTION_START)
                                                     .putExtra(ScreenCaptureService.EXTRA_SESSION_ID, createdSessionId)
@@ -229,7 +234,7 @@ class MainActivity : ComponentActivity() {
                                                         android.util.Log.e("ProjetoSuperSession", "Falha ao limpar sessão que não iniciou.", cleanupError)
                                                     }
                                                 }
-                                                deviceError.value = error.message ?: "Não foi possível iniciar o display virtual."
+                                                deviceError.value = error.message ?: "Não foi possível iniciar a captura JPEG."
                                             } finally {
                                                 busy.value = false
                                             }
@@ -276,7 +281,7 @@ class MainActivity : ComponentActivity() {
                             Text("Laboratório Android — controle transparente")
                             Text(
                                 "O controle remoto dos aplicativos identificados só funciona após autorização geral neste aparelho. " +
-                                    "A transmissão JPEG usa o display virtual independente. Câmera e microfone continuam exigindo suas permissões específicas do Android."
+                                    "A transmissão JPEG captura a tela principal pelo Serviço de Acessibilidade. Câmera e microfone continuam exigindo suas permissões específicas do Android."
                             )
                         }
                         item {
@@ -302,8 +307,8 @@ class MainActivity : ComponentActivity() {
                             PermissionRow("Notificações do serviço", notificationsGranted)
                             PermissionRow("Acessibilidade para controle remoto", accessibilityEnabled)
                             Text(
-                                "Transmissão de imagens: usa um display virtual independente e quadros JPEG. " +
-                                    "Não usa MediaProjection nem captura a tela física. A compatibilidade depende do Android e do fabricante.",
+                                "Transmissão de imagens: usa o Serviço de Acessibilidade para capturar a tela principal e enviar quadros JPEG. " +
+                                    "Não usa MediaProjection nem cria displays virtuais.",
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Text(
@@ -339,7 +344,7 @@ class MainActivity : ComponentActivity() {
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Text(
-                                "A visualização envia somente quadros JPEG do display virtual próprio; o Projeto Super não captura a tela física nem faz fallback intencional para ela. Ainda assim, alguns Androids ou aplicativos podem forçar atividades secundárias na tela física. Este APK comum não consegue garantir isolamento absoluto em todos os modelos.",
+                                "A visualização envia somente quadros JPEG da tela principal, capturados pelo Serviço de Acessibilidade após a ativação manual pelo usuário. Aplicativos protegidos pelo Android podem ocultar seu conteúdo da captura.",
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Button(
@@ -358,7 +363,7 @@ class MainActivity : ComponentActivity() {
                         item {
                             Text("Autorização geral dos aplicativos", style = MaterialTheme.typography.titleLarge)
                             Text(if (appControlAuthorized.value) {
-                                if (accessibilityEnabled) "Autorização geral concedida e Acessibilidade ativada. O controle de aplicativos fica disponível durante uma sessão ativa do display virtual."
+                                if (accessibilityEnabled) "Autorização geral concedida e Acessibilidade ativada. O controle e a captura JPEG estão disponíveis durante uma sessão ativa."
                                 else "Autorização geral concedida, mas o controle ainda NÃO está pronto: ative manualmente o serviço de Acessibilidade nas configurações do Android."
                             } else "Autorização geral ainda não concedida. Nenhum comando remoto de aplicativo será executado.")
                             Button(
@@ -406,7 +411,7 @@ class MainActivity : ComponentActivity() {
                                 enabled = appControlAuthorized.value,
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Revogar autorização geral") }
-                            Text("A autorização vale para todos os aplicativos identificados. A Acessibilidade precisa ser ativada manualmente nas configurações do Android. Câmera e microfone dependem de suas permissões específicas; a transmissão JPEG do display virtual não usa MediaProjection.")
+                            Text("A autorização vale para todos os aplicativos identificados. A Acessibilidade precisa ser ativada nas configurações do Android e permite a captura JPEG da tela e os comandos remotos. Câmera e microfone continuam dependendo de suas permissões específicas.")
                         }
                         item {
                             Text("Aplicativos disponíveis", style = MaterialTheme.typography.titleLarge)
@@ -454,7 +459,7 @@ class MainActivity : ComponentActivity() {
                             Text(
                                 "Esta é a autorização geral interna do Projeto Super; ela não é uma permissão do Android. Ao conceder, você autoriza o controle dos aplicativos identificados e as sessões solicitadas pelo dashboard. " +
                                     "Para toques, rolagem, digitação e abertura de aplicativos, o Android exige que você ative manualmente o serviço de Acessibilidade nas configurações. O Projeto Super não consegue ativá-lo por você. " +
-                                    "A transmissão JPEG usa um display virtual próprio e não solicita MediaProjection nem captura da tela física. Câmera e microfone só pedirão permissões do Android quando essas funções forem usadas. " +
+                                    "A transmissão JPEG usa a captura oficial da tela principal pelo Serviço de Acessibilidade, sem MediaProjection. Câmera e microfone só pedirão permissões do Android quando essas funções forem usadas. " +
                                     "Você pode revogar a autorização geral neste aplicativo."
                             )
                         },
