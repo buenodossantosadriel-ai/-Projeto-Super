@@ -90,6 +90,10 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         if (requestId.isBlank()) return
         var decided = false
         try {
+            check(getSharedPreferences("projeto_super_device", MODE_PRIVATE)
+                .getBoolean("app_control_authorized", false)) {
+                "A autorização geral do Projeto Super foi revogada."
+            }
             when {
                 action.startsWith("open_app:") -> {
                     val packageName = action.substringAfter("open_app:")
