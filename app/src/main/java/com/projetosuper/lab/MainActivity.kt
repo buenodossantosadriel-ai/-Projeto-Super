@@ -323,7 +323,7 @@ class MainActivity : ComponentActivity() {
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Text(
-                                "A visualização usa um display virtual independente e envia quadros JPEG desse display. A tela física não é capturada nem usada como alternativa. A compatibilidade depende do suporte do fabricante a atividades em displays secundários e gestos de acessibilidade no display remoto.",
+                                "A visualização envia somente quadros JPEG do display virtual próprio; o Projeto Super não captura a tela física nem faz fallback intencional para ela. Ainda assim, alguns Androids ou aplicativos podem forçar atividades secundárias na tela física. Este APK comum não consegue garantir isolamento absoluto em todos os modelos.",
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Button(
