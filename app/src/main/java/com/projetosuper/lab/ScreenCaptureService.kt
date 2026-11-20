@@ -178,6 +178,24 @@ class ScreenCaptureService : LifecycleService() {
     }
 
     private fun imageToJpeg(image: Image): ByteArray? {
+        val prefs = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
+        val selectedPackage = prefs.getString("selected_app_package", "").orEmpty()
+        val activePackage = RemoteControlAccessibilityService.activeWindowPackage
+        val screenBounds = RemoteControlAccessibilityService.activeWindowBounds?.let { android.graphics.Rect(it) }
+        if (selectedPackage.isBlank() || activePackage != selectedPackage || screenBounds == null) return null
+
+        val metrics = resources.displayMetrics
+        if (metrics.widthPixels <= 0 || metrics.heightPixels <= 0) return null
+        val scaleX = image.width.toFloat() / metrics.widthPixels.toFloat()
+        val scaleY = image.height.toFloat() / metrics.heightPixels.toFloat()
+        val left = (screenBounds.left * scaleX).toInt().coerceIn(0, image.width - 1)
+        val top = (screenBounds.top * scaleY).toInt().coerceIn(0, image.height - 1)
+        val right = (screenBounds.right * scaleX).toInt().coerceIn(left + 1, image.width)
+        val bottom = (screenBounds.bottom * scaleY).toInt().coerceIn(top + 1, image.height)
+        val cropWidth = right - left
+        val cropHeight = bottom - top
+        if (cropWidth <= 0 || cropHeight <= 0) return null
+
         val plane = image.planes[0]
         val buffer = plane.buffer
         val pixelStride = plane.pixelStride
@@ -187,15 +205,17 @@ class ScreenCaptureService : LifecycleService() {
         val padded = Bitmap.createBitmap(paddedWidth, image.height, Bitmap.Config.ARGB_8888)
         buffer.rewind()
         padded.copyPixelsFromBuffer(buffer)
-        val cropped = Bitmap.createBitmap(padded, 0, 0, image.width, image.height)
-        val scale = minOf(1f, 800f / image.width.toFloat(), 640f / image.height.toFloat())
-        val scaledWidth = (image.width * scale).toInt().coerceAtLeast(1)
-        val scaledHeight = (image.height * scale).toInt().coerceAtLeast(1)
-        val scaled = Bitmap.createScaledBitmap(cropped, scaledWidth, scaledHeight, true)
+        val fullFrame = Bitmap.createBitmap(padded, 0, 0, image.width, image.height)
+        val appFrame = Bitmap.createBitmap(fullFrame, left, top, cropWidth, cropHeight)
+        val scale = minOf(1f, 800f / cropWidth.toFloat(), 640f / cropHeight.toFloat())
+        val scaledWidth = (cropWidth * scale).toInt().coerceAtLeast(1)
+        val scaledHeight = (cropHeight * scale).toInt().coerceAtLeast(1)
+        val scaled = Bitmap.createScaledBitmap(appFrame, scaledWidth, scaledHeight, true)
         val out = ByteArrayOutputStream()
         val compressed = scaled.compress(Bitmap.CompressFormat.JPEG, 58, out)
-        if (scaled !== cropped) scaled.recycle()
-        cropped.recycle()
+        if (scaled !== appFrame) scaled.recycle()
+        appFrame.recycle()
+        fullFrame.recycle()
         padded.recycle()
         val jpeg = out.toByteArray()
         return if (compressed && jpeg.size >= 4 &&
