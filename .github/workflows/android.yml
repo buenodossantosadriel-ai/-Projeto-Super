@@ -48,10 +48,15 @@ jobs:
           assert "1 shl 6" not in capture
           assert "remove(RemoteDisplayLauncher.PREF_DISPLAY_ID)" in capture
           assert "setDisplayId(displayId)" in control
-          assert control.count("displayId == android.view.Display.DEFAULT_DISPLAY) return false") == 2
+          assert "displayId == android.view.Display.DEFAULT_DISPLAY) return false" in control
           assert "swipeNormalized" in control
           assert 'action.startsWith("swipe:")' in control
+          assert "suspendCancellableCoroutine" in control
+          assert "onCompleted" in control and "onCancelled" in control
           assert "remote_target_package" in control
+          assert "rootInActiveWindow" not in control
+          dashboard = Path("dashboard.html").read_text()
+          assert 'button("Gesto voltar (borda esquerda)"' in dashboard
           assert 'ControlApi.poll(this, "accessibility")' in control
           backend = Path("supabase/functions/projeto-super-controle/index.ts").read_text()
           assert 'action.startsWith("swipe:")' in backend
