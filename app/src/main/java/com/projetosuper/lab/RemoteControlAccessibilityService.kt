@@ -85,10 +85,10 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         }
     }
 
-    suspend fun executeAuthorizedCommand(request: JSONObject) {
+    suspend fun executeAuthorizedCommand(request: JSONObject): Boolean {
         val requestId = request.optString("id")
         val action = request.optString("action")
-        if (requestId.isBlank()) return
+        if (requestId.isBlank()) return false
         try {
             val displayId = ScreenCaptureService.remoteDisplayId
                 ?: error("A captura do display virtual não está ativa.")
@@ -96,7 +96,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                 action.startsWith("open_app:") -> {
                     val packageName = action.substringAfter("open_app:")
                     check(packageName != packageNameOfSelf() &&
-                        packageName.matches(Regex("[a-zA-Z0-9_]+(\\\\.[a-zA-Z0-9_]+)+"))) {
+                        packageName.matches(Regex("[a-zA-Z0-9_]+(\\.[a-zA-Z0-9_]+)+"))) {
                         "Pacote de aplicativo inválido."
                     }
                     val launcherIntent = Intent(Intent.ACTION_MAIN)
@@ -142,9 +142,11 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                 else -> error("Comando remoto não reconhecido.")
             }
             ControlApi.decide(this, requestId, true)
+            true
         } catch (error: Exception) {
             try { ControlApi.decide(this, requestId, false) } catch (_: Exception) {}
             android.util.Log.e("ProjetoSuperRemote", "Comando remoto recusado: ${error.message}", error)
+            false
         }
     }
 
