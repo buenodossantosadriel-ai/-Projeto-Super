@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.Intent
 import android.graphics.Path
+import android.graphics.Rect
 import android.os.Bundle
 import android.os.Build
 import android.view.Display
@@ -30,6 +31,10 @@ class RemoteControlAccessibilityService : AccessibilityService() {
     companion object {
         @Volatile var activeInstance: RemoteControlAccessibilityService? = null
             private set
+        @Volatile var activeWindowBounds: Rect? = null
+            private set
+        @Volatile var activeWindowPackage: String? = null
+            private set
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -47,7 +52,23 @@ class RemoteControlAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Eventos não são lidos nem armazenados.
+        // Guarda somente o pacote e os limites da janela ativa para recorte e coordenadas.
+        // Nenhum texto ou conteúdo da árvore de acessibilidade é armazenado.
+        val root = rootInActiveWindow ?: return
+        try {
+            val bounds = Rect()
+            root.getBoundsInScreen(bounds)
+            val activePackage = root.packageName?.toString()
+            if (!bounds.isEmpty && !activePackage.isNullOrBlank()) {
+                activeWindowBounds = Rect(bounds)
+                activeWindowPackage = activePackage
+            }
+        } catch (_: Exception) {
+            activeWindowBounds = null
+            activeWindowPackage = null
+        } finally {
+            root.recycle()
+        }
     }
 
     override fun onInterrupt() = Unit
@@ -101,6 +122,10 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                         .setPackage(packageName)
                     val info = packageManager.queryIntentActivities(launcherIntent, 0).firstOrNull()?.activityInfo
                         ?: error("Aplicativo não disponível para abertura.")
+                    getSharedPreferences("projeto_super_device", MODE_PRIVATE)
+                        .edit().putString("selected_app_package", packageName).apply()
+                    activeWindowBounds = null
+                    activeWindowPackage = null
                     val launch = Intent(Intent.ACTION_MAIN)
                         .addCategory(Intent.CATEGORY_LAUNCHER)
                         .setClassName(info.packageName, info.name)
@@ -164,6 +189,9 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         if (value.isBlank() || value.length > 2000) return false
         val root = rootInActiveWindow ?: return false
         try {
+            val selectedPackage = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
+                .getString("selected_app_package", "").orEmpty()
+            if (selectedPackage.isBlank() || root.packageName?.toString() != selectedPackage) return false
             val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
                 ?: findFocusedEditable(root)
                 ?: return false
@@ -182,12 +210,22 @@ class RemoteControlAccessibilityService : AccessibilityService() {
     }
 
     private suspend fun tapNormalizedAndWait(x: Int, y: Int): Boolean = withContext(Dispatchers.Main) {
-        val metrics = resources.displayMetrics
-        if (metrics.widthPixels <= 0 || metrics.heightPixels <= 0) return@withContext false
-        val path = Path().apply {
-            moveTo((x.coerceIn(0, 1000) / 1000f) * metrics.widthPixels,
-                (y.coerceIn(0, 1000) / 1000f) * metrics.heightPixels)
+        val root = rootInActiveWindow ?: return@withContext false
+        val bounds = Rect()
+        val selectedPackage = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
+            .getString("selected_app_package", "").orEmpty()
+        try {
+            if (selectedPackage.isBlank() || root.packageName?.toString() != selectedPackage) {
+                return@withContext false
+            }
+            root.getBoundsInScreen(bounds)
+        } finally {
+            root.recycle()
         }
+        if (bounds.isEmpty) return@withContext false
+        val targetX = bounds.left + (x.coerceIn(0, 1000) / 1000f * bounds.width()).toInt()
+        val targetY = bounds.top + (y.coerceIn(0, 1000) / 1000f * bounds.height()).toInt()
+        val path = Path().apply { moveTo(targetX.toFloat(), targetY.toFloat()) }
         val gestureBuilder = GestureDescription.Builder()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             gestureBuilder.setDisplayId(Display.DEFAULT_DISPLAY)
