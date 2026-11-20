@@ -38,7 +38,7 @@
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Captura JPEG de display virtual independente para sessão remota iniciada pelo usuário" />
+                android:value="Captura JPEG contínua da tela principal para sessão remota iniciada pelo usuário" />
         </service>
         <service
             android:name=".AudioCaptureService"
