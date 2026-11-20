@@ -93,6 +93,7 @@ class MainActivity : ComponentActivity() {
             val busy = remember { mutableStateOf(false) }
             val startupPermissionRequestPending = remember { mutableStateOf(false) }
             val startupPermissionFlowStarted = remember { mutableStateOf(false) }
+            val startupPermissionFlowComplete = remember { mutableStateOf(false) }
 
             val permissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestMultiplePermissions()
@@ -106,6 +107,7 @@ class MainActivity : ComponentActivity() {
                     } else {
                         "Algumas permissões opcionais foram recusadas: " + denied.joinToString() + ". A captura JPEG e o controle dependem da Acessibilidade."
                     }
+                    startupPermissionFlowComplete.value = true
                     if (!isAccessibilityServiceEnabled(context)) {
                         context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                     }
@@ -148,8 +150,11 @@ class MainActivity : ComponentActivity() {
                     notificationPermissionRequested.value = Build.VERSION.SDK_INT >= 33 &&
                         missingPermissions.contains(Manifest.permission.POST_NOTIFICATIONS)
                     permissionLauncher.launch(missingPermissions.toTypedArray())
-                } else if (!isAccessibilityServiceEnabled(context)) {
-                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                } else {
+                    startupPermissionFlowComplete.value = true
+                    if (!isAccessibilityServiceEnabled(context)) {
+                        context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    }
                 }
             }
 
@@ -466,7 +471,8 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                if (showInitialAuthorization.value && !appControlAuthorized.value) {
+                if (showInitialAuthorization.value && !appControlAuthorized.value &&
+                    startupPermissionFlowComplete.value) {
                     AlertDialog(
                         onDismissRequest = { },
                         title = { Text("Autorização geral do Projeto Super") },
