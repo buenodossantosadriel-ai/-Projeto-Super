@@ -222,28 +222,19 @@ class MainActivity : ComponentActivity() {
                                         requestedAction.startsWith("tap:") ||
                                         requestedAction.startsWith("type_text:") ||
                                         requestedAction == "remote_back" || requestedAction == "remote_home"
-                                    if (isAppCommand && appControlAuthorized.value &&
-                                        RemoteControlAccessibilityService.activeInstance == null) {
-                                        busy.value = true
-                                        scope.launch {
-                                            try {
-                                                runAuthorizedAppCommand(context, candidate)
-                                                deviceError.value = null
-                                            } catch (error: Exception) {
-                                                try { ControlApi.decide(context, candidate.optString("id"), false) } catch (_: Exception) {}
-                                                deviceError.value = error.message ?: "Não foi possível executar o comando do aplicativo."
-                                            } finally {
-                                                busy.value = false
-                                            }
+                                    if (isAppCommand) {
+                                        if (!appControlAuthorized.value) {
+                                            deviceError.value = "Aguardando a autorização geral inicial."
+                                        } else if (RemoteControlAccessibilityService.activeInstance == null) {
+                                            deviceError.value = "Ative a acessibilidade do Projeto Super para receber comandos remotos."
                                         }
-                                        break
+                                        // Somente o serviço de acessibilidade consome comandos de aplicativos.
+                                        continue
                                     }
-                                    val needsUiDecision = isAppCommand &&
-                                        (!appControlAuthorized.value || RemoteControlAccessibilityService.activeInstance == null)
                                     if (requestedAction in listOf(
                                             "camera_front", "camera_back", "screen_share",
                                             "microphone_live", "microphone_record"
-                                        ) || needsUiDecision) {
+                                        )) {
                                         selected = candidate
                                         break
                                     }
@@ -459,50 +450,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val request = pendingRequest.value
-                if (request != null && !appControlAuthorized.value &&
-                    (request.optString("action").startsWith("open_app:") ||
-                        request.optString("action").startsWith("tap:") ||
-                        request.optString("action") == "remote_back" ||
-                        request.optString("action") == "remote_home")) {
-                    AlertDialog(
-                        onDismissRequest = { },
-                        title = { Text("Autorizar controle geral dos aplicativos?") },
-                        text = { Text("Uma única autorização habilita comandos remotos para todos os aplicativos identificados neste aparelho. O acesso pode ser revogado a qualquer momento. Toques e navegação também exigem que você ative manualmente a acessibilidade do Projeto Super nas configurações do Android.") },
-                        confirmButton = {
-                            TextButton(onClick = {
-                                appControlAuthorized.value = true
-                                context.getSharedPreferences("projeto_super_device", Context.MODE_PRIVATE)
-                                    .edit().putBoolean("app_control_authorized", true).apply()
-                                appsSynced.value = false
-                                pendingRequest.value = null
-                                scope.launch {
-                                    try {
-                                        ControlApi.syncApps(context, loadLaunchableApps())
-                                        appsSynced.value = true
-                                        runAuthorizedAppCommand(context, request)
-                                        deviceError.value = "Autorização geral concedida e primeiro comando executado."
-                                    } catch (error: Exception) {
-                                        deviceError.value = error.message ?: "Não foi possível concluir a solicitação."
-                                    }
-                                }
-                            }) { Text("Autorizar todos") }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = {
-                                pendingRequest.value = null
-                                scope.launch {
-                                    try { ControlApi.decide(context, request.optString("id"), false) } catch (_: Exception) {}
-                                }
-                                deviceError.value = "Autorização geral recusada. Nenhum comando foi executado."
-                            }) { Text("Recusar") }
-                        }
-                    )
-                }
-                if (request != null && (appControlAuthorized.value ||
-                    !(request.optString("action").startsWith("open_app:") ||
-                        request.optString("action").startsWith("tap:") ||
-                        request.optString("action") == "remote_back" ||
-                        request.optString("action") == "remote_home"))) {
+                if (request != null) {
                     val action = request.optString("action")
                     val description = when (action) {
                         "camera_front" -> "O painel administrativo solicitou acesso à câmera frontal. A câmera ficará ativa enquanto a sessão estiver aberta."
