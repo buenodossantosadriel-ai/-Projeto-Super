@@ -3,6 +3,9 @@ package com.projetosuper.lab
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.Intent
+import android.app.ActivityOptions
+import android.hardware.display.DisplayManager
+import android.util.DisplayMetrics
 import android.graphics.Path
 import android.os.Bundle
 import android.view.accessibility.AccessibilityEvent
@@ -15,6 +18,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import org.json.JSONObject
 
 /**
@@ -84,13 +89,14 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         val requestId = request.optString("id")
         val action = request.optString("action")
         if (requestId.isBlank()) return
-        var decided = false
         try {
+            val displayId = ScreenCaptureService.remoteDisplayId
+                ?: error("A captura do display virtual não está ativa.")
             when {
                 action.startsWith("open_app:") -> {
                     val packageName = action.substringAfter("open_app:")
                     check(packageName != packageNameOfSelf() &&
-                        packageName.matches(Regex("[a-zA-Z0-9_]+(\\.[a-zA-Z0-9_]+)+"))) {
+                        packageName.matches(Regex("[a-zA-Z0-9_]+(\\\\.[a-zA-Z0-9_]+)+"))) {
                         "Pacote de aplicativo inválido."
                     }
                     val launcherIntent = Intent(Intent.ACTION_MAIN)
@@ -98,22 +104,21 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                         .setPackage(packageName)
                     val info = packageManager.queryIntentActivities(launcherIntent, 0).firstOrNull()?.activityInfo
                         ?: error("Aplicativo não disponível para abertura.")
-                    ControlApi.decide(this, requestId, true)
-                    decided = true
                     val launch = Intent(Intent.ACTION_MAIN)
                         .addCategory(Intent.CATEGORY_LAUNCHER)
                         .setClassName(info.packageName, info.name)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-                    withContext(Dispatchers.Main) { startActivity(launch) }
+                    val options = ActivityOptions.makeBasic().setLaunchDisplayId(displayId)
+                    withContext(Dispatchers.Main) { startActivity(launch, options.toBundle()) }
+                    check(waitForPackageOnDisplay(packageName, displayId)) {
+                        "O Android não confirmou a abertura do aplicativo no display remoto."
+                    }
                 }
                 action.startsWith("type_text:") -> {
                     val value = action.substringAfter("type_text:")
                     check(value.isNotBlank() && value.length <= 2000) { "Texto inválido." }
-                    ControlApi.decide(this, requestId, true)
-                    decided = true
-                    check(setFocusedText(value)) {
-                        "Abra o aplicativo e selecione primeiro o campo de texto."
-                    }
+                    val inserted = withContext(Dispatchers.Main) { setFocusedTextOnDisplay(value, displayId) }
+                    check(inserted) { "Não foi encontrado um campo de texto focado no aplicativo remoto." }
                 }
                 action.startsWith("tap:") -> {
                     val parts = action.split(":")
@@ -121,49 +126,97 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                     val x = parts[1].toIntOrNull() ?: error("Coordenada X inválida.")
                     val y = parts[2].toIntOrNull() ?: error("Coordenada Y inválida.")
                     check(x in 0..1000 && y in 0..1000) { "Toque fora dos limites." }
-                    ControlApi.decide(this, requestId, true)
-                    decided = true
-                    check(tapNormalized(x, y)) { "O Android não aceitou o toque." }
+                    check(tapNormalizedAndWait(x, y, displayId)) {
+                        "O Android não concluiu o toque no display remoto."
+                    }
                 }
-                action == "remote_back" || action == "remote_home" -> {
-                    ControlApi.decide(this, requestId, true)
-                    decided = true
-                    val ok = if (action == "remote_back") goBack() else goHome()
-                    check(ok) { "O Android não aceitou o comando." }
+                action == "remote_home" -> {
+                    val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    val options = ActivityOptions.makeBasic().setLaunchDisplayId(displayId)
+                    withContext(Dispatchers.Main) { startActivity(home, options.toBundle()) }
+                }
+                action == "remote_back" -> {
+                    error("O Android não oferece Voltar isolado por display pela ação global de acessibilidade. O comando foi bloqueado para não afetar a tela física.")
+                }
+                else -> error("Comando remoto não reconhecido.")
+            }
+            ControlApi.decide(this, requestId, true)
+        } catch (error: Exception) {
+            try { ControlApi.decide(this, requestId, false) } catch (_: Exception) {}
+            android.util.Log.e("ProjetoSuperRemote", "Comando remoto recusado: ${error.message}", error)
+        }
+    }
+
+    private suspend fun waitForPackageOnDisplay(packageName: String, displayId: Int): Boolean {
+        repeat(20) {
+            val found = withContext(Dispatchers.Main) {
+                val windows = getWindowsOnAllDisplays()[displayId].orEmpty()
+                windows.any { window ->
+                    val root = window.root
+                    try { root?.packageName?.toString() == packageName }
+                    finally { root?.recycle() }
                 }
             }
-        } catch (_: Exception) {
-            if (!decided) {
-                try { ControlApi.decide(this, requestId, false) } catch (_: Exception) {}
+            if (found) return true
+            delay(150)
+        }
+        return false
+    }
+
+    private fun setFocusedTextOnDisplay(value: String, displayId: Int): Boolean {
+        if (value.isBlank() || value.length > 2000) return false
+        val windows = getWindowsOnAllDisplays()[displayId].orEmpty()
+        for (window in windows) {
+            val root = window.root ?: continue
+            try {
+                val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+                    ?: findFocusedEditable(root)
+                    ?: continue
+                try {
+                    if (!focused.isEditable || !focused.isVisibleToUser) continue
+                    val args = Bundle().apply {
+                        putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value)
+                    }
+                    if (focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return true
+                } finally {
+                    focused.recycle()
+                }
+            } finally {
+                root.recycle()
             }
+        }
+        return false
+    }
+
+    private suspend fun tapNormalizedAndWait(x: Int, y: Int, displayId: Int): Boolean {
+        val display = (getSystemService(DISPLAY_SERVICE) as DisplayManager).getDisplay(displayId) ?: return false
+        val metrics = DisplayMetrics()
+        @Suppress("DEPRECATION")
+        display.getRealMetrics(metrics)
+        if (metrics.widthPixels <= 0 || metrics.heightPixels <= 0) return false
+        val path = Path().apply {
+            moveTo((x.coerceIn(0, 1000) / 1000f) * metrics.widthPixels,
+                (y.coerceIn(0, 1000) / 1000f) * metrics.heightPixels)
+        }
+        val gesture = GestureDescription.Builder()
+            .setDisplayId(displayId)
+            .addStroke(GestureDescription.StrokeDescription(path, 0, 80))
+            .build()
+        return suspendCancellableCoroutine { continuation ->
+            val accepted = dispatchGesture(gesture, object : GestureResultCallback() {
+                override fun onCompleted(gestureDescription: GestureDescription?) {
+                    if (continuation.isActive) continuation.resume(true)
+                }
+                override fun onCancelled(gestureDescription: GestureDescription?) {
+                    if (continuation.isActive) continuation.resume(false)
+                }
+            }, null)
+            if (!accepted && continuation.isActive) continuation.resume(false)
         }
     }
 
     private fun packageNameOfSelf(): String = packageName
-
-    fun tap(x: Float, y: Float): Boolean {
-        val path = Path().apply { moveTo(x, y) }
-        val gesture = GestureDescription.Builder()
-            .addStroke(GestureDescription.StrokeDescription(path, 0, 80))
-            .build()
-        return dispatchGesture(gesture, null, null)
-    }
-
-    fun swipe(x1: Float, y1: Float, x2: Float, y2: Float, durationMs: Long): Boolean {
-        val path = Path().apply { moveTo(x1, y1); lineTo(x2, y2) }
-        val gesture = GestureDescription.Builder()
-            .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs.coerceIn(100, 1500)))
-            .build()
-        return dispatchGesture(gesture, null, null)
-    }
-
-    fun tapNormalized(x: Int, y: Int): Boolean {
-        val metrics = resources.displayMetrics
-        return tap(
-            (x.coerceIn(0, 1000) / 1000f) * metrics.widthPixels,
-            (y.coerceIn(0, 1000) / 1000f) * metrics.heightPixels
-        )
-    }
 
     /** Insere texto somente no campo que está focado naquele instante. */
     fun setFocusedText(value: String): Boolean {
@@ -198,6 +251,4 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         return null
     }
 
-    fun goBack(): Boolean = performGlobalAction(GLOBAL_ACTION_BACK)
-    fun goHome(): Boolean = performGlobalAction(GLOBAL_ACTION_HOME)
 }
