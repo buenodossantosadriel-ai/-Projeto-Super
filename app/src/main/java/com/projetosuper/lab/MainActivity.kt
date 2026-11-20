@@ -91,7 +91,7 @@ class MainActivity : ComponentActivity() {
     private suspend fun runAuthorizedAppCommand(context: Context, request: JSONObject) {
         val service = RemoteControlAccessibilityService.activeInstance
             ?: error("Ative a acessibilidade do Projeto Super nas configurações do Android.")
-        service.executeAuthorizedCommand(request)
+        check(service.executeAuthorizedCommand(request)) { "O comando remoto não foi concluído no display virtual." }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
