@@ -231,17 +231,26 @@ Deno.serve(async (req: Request) => {
           .eq("device_id", device.id).eq("status", "pending").gt("expires_at", new Date().toISOString())
           .order("created_at", { ascending: true }).limit(consumer ? 1 : 10);
         const { data: requests } = await pendingQuery;
-        // Clientes antigos continuam recebendo a lista completa. Clientes atualizados
-        // recebem apenas o primeiro comando e somente o consumidor responsável por ele.
-        if (consumer !== "activity" && consumer !== "accessibility") {
-          return respond({ ok: true, paired: device.status === "paired", requests: requests || [] });
+        // Cada família de serviço recebe exclusivamente os comandos que deve executar.
+        const allowedConsumers = ["activity", "accessibility", "screen", "audio", "camera"];
+        if (!allowedConsumers.includes(consumer)) {
+          return respond({ ok: false, error: "Consumidor de comandos inválido." }, 400);
         }
         const oldest = requests?.[0];
         if (!oldest) return respond({ ok: true, paired: device.status === "paired", requests: [] });
         const action = String(oldest.action || "");
         const isAppCommand = action.startsWith("open_app:") || action.startsWith("tap:") ||
           action.startsWith("type_text:") || action.startsWith("swipe:") || action === "remote_back";
-        const expectedConsumer = isAppCommand ? "accessibility" : "activity";
+        let expectedConsumer = isAppCommand ? "accessibility" : "activity";
+        if (action === "stop_session") {
+          const { data: activeSession } = await admin.from("projeto_super_device_sessions")
+            .select("session_type").eq("device_id", device.id).eq("status", "active")
+            .order("started_at", { ascending: false }).limit(1).maybeSingle();
+          const sessionType = activeSession?.session_type;
+          expectedConsumer = sessionType === "screen_share" ? "screen" :
+            (sessionType === "camera_front" || sessionType === "camera_back") ? "camera" :
+            (sessionType === "microphone_live" || sessionType === "microphone_record") ? "audio" : "activity";
+        }
         return respond({
           ok: true,
           paired: device.status === "paired",
