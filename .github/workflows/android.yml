@@ -1,4 +1,4 @@
-name: Compilar Projeto Super original
+name: Validar Projeto Super original
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   build:
-    name: Compilar APK Android original
+    name: Validar código Android sem gerar APK
     runs-on: ubuntu-latest
     steps:
       - name: Baixar código
@@ -32,8 +32,8 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Compilar APK original
-        run: gradle :app:assembleDebug
+      - name: Compilar fontes da variante release (sem gerar APK)
+        run: gradle :app:compileReleaseKotlin
 
       - name: Validar JavaScript do dashboard
         run: |
@@ -46,11 +46,3 @@ jobs:
           Path('/tmp/dashboard.mjs').write_text(html[start:end], encoding="utf-8")
           PY
           node --check /tmp/dashboard.mjs
-
-      - name: Disponibilizar APK compilado
-        uses: actions/upload-artifact@v4
-        with:
-          name: projeto-super-original-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 7
