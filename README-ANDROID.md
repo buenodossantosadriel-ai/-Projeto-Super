@@ -1,41 +1,57 @@
 # Projeto Super — Android nativo
 
-Aplicativo de laboratório em Kotlin/Jetpack Compose.
+Este repositório contém o APK Android original do Projeto Super e o dashboard web correspondente.
 
-## Recursos implementados
-- Lista apps com atividade de inicialização visível ao Android.
-- Mostra nome e identificador de pacote; abre somente após toque explícito.
-- Painel de status para câmera, microfone, localização e notificações.
-- Solicita câmera, microfone, localização e notificações automaticamente apenas na primeira abertura; registra que a solicitação inicial já ocorreu.
-- Não repete automaticamente os pedidos nos acessos seguintes; se uma permissão for negada ou revogada, o usuário pode abrir as configurações do Android.
-- Usa o Photo Picker oficial para o usuário selecionar uma foto ou vídeo.
-- Não inicia gravação, captura de tela ou envio de arquivos automaticamente.
-- Não monitora nem bloqueia outros aplicativos.
+## Arquitetura implementada
 
-## Próximas etapas
-- Implementar prévia de câmera e áudio em sessão visível, iniciada localmente.
-- Implementar localização sob demanda com indicador e finalidade informada.
-- Integrar autenticação do dispositivo e endpoint Supabase com tokens de curta duração.
-- Implementar envio de mídia somente após seleção/ação explícita e confirmação.
-- Adicionar histórico local de operações e estado de conexão.
-- Avaliar controles de uso do Android apenas por APIs oficiais e autorização especial.
+- Aplicativo Android nativo em Kotlin e Jetpack Compose.
+- Identifica aplicativos que oferecem uma atividade de inicialização e sincroniza nome e pacote com o dashboard.
+- Abre o aplicativo selecionado em um display virtual público, limitado ao próprio conteúdo (PUBLIC + OWN_CONTENT_ONLY), quando o aparelho oferece suporte a atividades em displays secundários.
+- Captura somente os quadros do display virtual por ImageReader, converte-os para JPEG e envia os quadros à sessão remota. Não usa WebRTC nem MediaProjection e não espelha intencionalmente a tela física principal.
+- Envia toque, rolagem, voltar e texto por serviço de Acessibilidade ativado manualmente nas configurações do Android. O texto só é inserido no campo editável focado do aplicativo-alvo.
+- Usa serviços em primeiro plano e notificação persistente para as sessões de captura, câmera e áudio.
+- O dashboard consulta os quadros JPEG e os comandos pelo endpoint HTTPS/Supabase.
 
-## Requisitos
-- Android Gradle Plugin 8.7.3.
-- JDK 17.
-- Android SDK 35.
+## Autorizações e privacidade
 
+- A autorização geral de controle remoto é solicitada pelo próprio Projeto Super e pode ser revogada no aplicativo.
+- O serviço de Acessibilidade precisa ser habilitado manualmente pelo usuário nas configurações do Android; o APK não pode ativá-lo por conta própria.
+- A autorização geral não substitui permissões específicas do Android: câmera, microfone e notificações são solicitados quando necessários.
+- A captura JPEG do display virtual não usa a autorização de captura de tela do MediaProjection.
+- Comandos e sessões são validados pelo endpoint; a chave secreta do Supabase permanece no servidor. A chave do dispositivo é protegida localmente pelo Android Keystore.
 
-## Integração Android + endpoint (em implementação)
+## Limitações reais do Android
 
-- O app registra um identificador de dispositivo e uma chave aleatória protegida pelo Android Keystore.
-- O app mostra um código temporário de pareamento; o painel usa esse código para vincular o aparelho à sessão autenticada do navegador.
-- O painel pode solicitar câmera frontal, câmera traseira, compartilhamento de tela ou encerramento.
-- Pedidos de captura aguardam confirmação no próprio Android. O compartilhamento de tela também exige a tela oficial de consentimento do Android a cada sessão.
-- A câmera usa CameraX sem prévia na interface principal e publica quadros JPEG periódicos para armazenamento privado; o endpoint recebe links temporários assinados para exibir uma prévia atualizada. Isso ainda não é um fluxo contínuo de vídeo/WebRTC.
-- Sessões de câmera e tela usam serviços em primeiro plano com notificação persistente e ação para parar.
-- O app consulta pedidos enquanto está aberto; durante uma sessão ativa, o serviço em primeiro plano também consulta pedidos de encerramento. Ao encerrar ou revogar o aparelho, os quadros da sessão são removidos do bucket privado.
-- O endpoint de controle está em `supabase/functions/projeto-super-controle/index.ts`. Ele valida JWT do painel ou chave aleatória do dispositivo; nenhuma chave secreta Supabase é incluída no APK.
-- As tabelas de dispositivos, pedidos, sessões e quadros têm RLS habilitado e acesso direto revogado para clientes públicos; a Edge Function usa a chave secreta somente no servidor.
+- A abertura de aplicativos em display secundário depende do suporte do aparelho (FEATURE_ACTIVITIES_ON_SECONDARY_DISPLAYS) e das regras do Android e do aplicativo aberto.
+- Alguns fabricantes ou aplicativos podem não aceitar a abertura em display secundário ou podem iniciar atividades adicionais na tela física. Um APK comum não consegue garantir isolamento absoluto em todos os aparelhos e em todos os aplicativos.
+- O Projeto Super não deve declarar uma sessão como bem-sucedida se não conseguir confirmar a atividade no display virtual.
+- Aplicativos que bloqueiam janelas, conteúdo protegido ou ações de Acessibilidade podem limitar a experiência.
 
-**Importante:** a integração precisa passar pela compilação e testes em dois aparelhos antes de considerar a versão pronta para instalação. A captura não inicia silenciosamente por comando remoto.
+## Compilação e validação
+
+Requisitos:
+- Android Gradle Plugin 8.7.3
+- Gradle 8.9
+- JDK 17
+- Android SDK 35
+
+O workflow .github/workflows/android.yml:
+1. verifica as regras arquiteturais e a separação dos consumidores de comandos;
+2. compila as fontes Kotlin da variante release;
+3. gera o APK debug original para teste;
+4. valida a sintaxe JavaScript do dashboard;
+5. publica APK, identificação e SHA-256 como artefato temporário do GitHub Actions.
+
+O APK debug é assinado com a chave de depuração do ambiente de CI. Ele pode não atualizar uma instalação assinada com outra chave. Não é um APK de produção.
+
+## Testes ainda necessários
+
+A compilação automatizada não comprova compatibilidade com todos os fabricantes. Antes de declarar o Projeto Super pronto, testar no aparelho-alvo:
+- criação do display virtual e abertura de dois ou mais aplicativos;
+- confirmação de que os quadros JPEG mostram somente o display virtual;
+- toque, rolagem, voltar e digitação;
+- mudança de orientação, perda de rede, encerramento e retomada de sessão;
+- encerramento remoto e revogação do dispositivo;
+- permissões e indicadores de câmera/microfone, quando usados.
+
+Não afirmar funcionamento em um aparelho sem executar esses testes nele.
