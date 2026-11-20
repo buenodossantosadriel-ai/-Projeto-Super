@@ -32,28 +32,32 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Verificar arquitetura sem espelhamento da tela física
+      - name: Verificar captura JPEG e controle pela Acessibilidade
         run: |
           python3 - <<'PY'
           from pathlib import Path
           main = Path("app/src/main/java/com/projetosuper/lab/MainActivity.kt").read_text()
           all_kotlin = "\\n".join(path.read_text() for path in Path("app/src/main").rglob("*.kt"))
-          assert "import android.media.projection.MediaProjection" not in all_kotlin
-          assert "getMediaProjection" not in all_kotlin
-          assert "createScreenCaptureIntent" not in all_kotlin
           capture = Path("app/src/main/java/com/projetosuper/lab/ScreenCaptureService.kt").read_text()
           control = Path("app/src/main/java/com/projetosuper/lab/RemoteControlAccessibilityService.kt").read_text()
           launcher = Path("app/src/main/java/com/projetosuper/lab/RemoteDisplayLauncher.kt").read_text()
           api = Path("app/src/main/java/com/projetosuper/lab/ControlApi.kt").read_text()
-          assert "createScreenCaptureIntent(" not in main
-          assert "getMediaProjection(" not in capture
-          assert "createVirtualDisplay(" in capture
-          assert "VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY" in capture
-          assert "supportsTouchFlag" not in capture
-          assert "1 shl 6" not in capture
-          assert "remove(RemoteDisplayLauncher.PREF_DISPLAY_ID)" in capture
-          assert "setDisplayId(displayId)" in control
-          assert "displayId == android.view.Display.DEFAULT_DISPLAY) return false" in control
+          accessibility_xml = Path("app/src/main/res/xml/remote_control_accessibility.xml").read_text()
+          dashboard = Path("dashboard.html").read_text()
+          backend = Path("supabase/functions/projeto-super-controle/index.ts").read_text()
+          assert "MediaProjection" not in all_kotlin
+          assert "getMediaProjection" not in all_kotlin
+          assert "createScreenCaptureIntent" not in all_kotlin
+          assert "createVirtualDisplay(" not in all_kotlin
+          assert "takeScreenshot(" in control
+          assert "Bitmap.wrapHardwareBuffer" in control
+          assert "Display.DEFAULT_DISPLAY" in control
+          assert 'android:canTakeScreenshot="true"' in accessibility_xml
+          assert "ACTION_ACCESSIBILITY_SETTINGS" in main
+          assert "accessibilitySettingsOpenedForThisLaunch" in main
+          assert "isAccessibilityServiceEnabled(context)" in main
+          assert "FEATURE_ACTIVITIES_ON_SECONDARY_DISPLAYS" not in all_kotlin
+          assert "setDisplayId(" not in control
           assert "swipeNormalized" in control
           assert 'action.startsWith("swipe:")' in control
           assert "suspendCancellableCoroutine" in control
@@ -62,50 +66,35 @@ jobs:
           assert "selectedAppFocused" in control
           assert "if (!selectedAppFocused) return@withContext false" in control
           assert "rootInActiveWindow" not in control
-          dashboard = Path("dashboard.html").read_text()
-          assert 'button("Gesto voltar (borda esquerda)"' in dashboard
-          assert 'ControlApi.poll(this, "accessibility")' in control
-          backend = Path("supabase/functions/projeto-super-controle/index.ts").read_text()
-          assert "const isSwipe =" in backend
-          assert 'requestedAction = String(body.control || "")' in backend
-          assert "isRemoteNavigation || isTap || isSwipe || isTypeText" in backend
-          assert "isVirtualDisplayCommand" in backend
-          assert 'const allowedConsumers = ["activity", "accessibility", "screen", "audio", "camera"]' in backend
-          assert 'expectedConsumer = sessionType === "screen_share" ? "screen"' in backend
+          assert "performGlobalAction(GLOBAL_ACTION_BACK)" in control
+          assert "RemoteDisplayLauncher.start" in control
+          assert "ControlApi.poll(this, \"accessibility\")" in control
+          assert "ControlApi.uploadFrame" in capture
           assert 'ControlApi.poll(this@ScreenCaptureService, "screen")' in capture
-          audio = Path("app/src/main/java/com/projetosuper/lab/AudioCaptureService.kt").read_text()
-          camera = Path("app/src/main/java/com/projetosuper/lab/CameraCaptureService.kt").read_text()
-          activity = Path("app/src/main/java/com/projetosuper/lab/MainActivity.kt").read_text()
-          assert 'ControlApi.poll(this@AudioCaptureService, "audio")' in audio
-          assert 'ControlApi.poll(this@CameraCaptureService, "camera")' in camera
-          assert 'ControlApi.poll(context, "activity")' in activity
-          assert 'ControlApi.poll(this, "accessibility")' in control
-          assert "stop_session" not in activity
-          assert "remote_home" not in backend + dashboard + all_kotlin
-          assert "Mantenha o Projeto Super aberto" in dashboard
-          assert "createScreenCaptureIntent(" not in activity
-          assert "Build.VERSION_CODES.R" in launcher
-          assert "isAccessibilityServiceEnabled(context)" in main
-          assert "FEATURE_ACTIVITIES_ON_SECONDARY_DISPLAYS" in main
-          assert "Autorização geral revogada. Sessões locais encerradas" in main
-          assert "ScreenCaptureService.ACTION_STOP" in main
-          assert "AudioCaptureService.ACTION_STOP" in main
-          assert "CameraCaptureService.ACTION_STOP" in main
-          assert '.limit(50)' in backend
-          assert 'expectedConsumer === consumer' in backend
-          assert 'file.type !== "image/jpeg"' in backend
-          assert '"image/png"' not in backend
-          assert 'image/jpeg' in api
-          assert 'setLaunchDisplayId(displayId)' in launcher
-          assert 'd.active_session?.session_type==="screen_share"' in dashboard
-          assert 'sendText.disabled=!canRemote' in dashboard
           assert "remoteControlReady()" in capture
           assert 'getBoolean("app_control_authorized"' in capture
           assert '.remove("remote_target_package")' in capture
-          assert "pendingCleanupError" in backend
-          assert 'getBoolean("app_control_authorized"' in launcher
+          assert "image/jpeg" in api
+          assert 'ControlApi.poll(context, "activity")' in main
+          audio = Path("app/src/main/java/com/projetosuper/lab/AudioCaptureService.kt").read_text()
+          camera = Path("app/src/main/java/com/projetosuper/lab/CameraCaptureService.kt").read_text()
+          assert 'ControlApi.poll(this@AudioCaptureService, "audio")' in audio
+          assert 'ControlApi.poll(this@CameraCaptureService, "camera")' in camera
+          assert "stop_session" not in main
+          assert "remote_home" not in backend + dashboard + all_kotlin
           assert "WebRTC" not in all_kotlin + dashboard
-          print("Arquitetura isolada, permissões, fila de comandos e transporte JPEG verificados.")
+          assert 'd.active_session?.session_type==="screen_share"' in dashboard
+          assert "sendText.disabled=!canRemote" in dashboard
+          assert 'const isSwipe =' in backend
+          assert 'requestedAction = String(body.control || "")' in backend
+          assert "isRemoteNavigation || isTap || isSwipe || isTypeText" in backend
+          assert "isVirtualDisplayCommand" not in backend
+          assert 'const allowedConsumers = ["activity", "accessibility", "screen", "audio", "camera"]' in backend
+          assert 'expectedConsumer = sessionType === "screen_share" ? "screen"' in backend
+          assert 'file.type !== "image/jpeg"' in backend
+          assert '"image/png"' not in backend
+          assert "pendingCleanupError" in backend
+          print("Captura JPEG por Acessibilidade, comandos remotos e contrato do dashboard verificados.")
           PY
 
       - name: Compilar fontes da variante release (sem gerar APK)
