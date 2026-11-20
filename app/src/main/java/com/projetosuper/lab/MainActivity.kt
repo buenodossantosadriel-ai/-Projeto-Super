@@ -138,9 +138,40 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            val notificationPermissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission()
+            ) { granted ->
+                permissionRefresh.value++
+                deviceError.value = if (granted) {
+                    "Notificações autorizadas. A captura de tela ainda exigirá a confirmação nativa do Android quando a transmissão for iniciada."
+                } else {
+                    "Notificações não autorizadas. A transmissão ainda pode depender das regras do Android para serviços em primeiro plano."
+                }
+            }
+            val notificationPermissionRequested = remember { mutableStateOf(false) }
+
             val photoPicker = rememberLauncherForActivityResult(
                 ActivityResultContracts.PickVisualMedia()
             ) { uri -> selectedMedia.value = uri }
+
+            LaunchedEffect(appControlAuthorized.value) {
+                if (appControlAuthorized.value && Build.VERSION.SDK_INT >= 33 &&
+                    !notificationPermissionRequested.value &&
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    notificationPermissionRequested.value = true
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
+
+            LaunchedEffect(lifecycleOwner) {
+                lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                    while (true) {
+                        permissionRefresh.value++
+                        delay(1000)
+                    }
+                }
+            }
 
             LaunchedEffect(Unit) {
                 try {
@@ -281,15 +312,27 @@ class MainActivity : ComponentActivity() {
                         item {
                             Text("Permissões do aparelho", style = MaterialTheme.typography.titleLarge)
                             Text("Verificação: ${permissionRefresh.value}", style = MaterialTheme.typography.labelSmall)
-                            PermissionRow("Câmera", cameraGranted)
-                            PermissionRow("Microfone", microphoneGranted)
-                            PermissionRow("Notificações", notificationsGranted)
+                            PermissionRow("Notificações do serviço", notificationsGranted)
                             PermissionRow("Acessibilidade para controle remoto", accessibilityEnabled)
                             Text(
-                                "O controle remoto exige ativar este serviço nas configurações do Android. " +
-                                    "Os gestos são enviados ao display virtual; ações globais que afetariam a tela física são bloqueadas.",
+                                "Transmissão de imagens: a permissão de Internet é normal e já está declarada no aplicativo. " +
+                                    "A confirmação de captura de tela (MediaProjection) será solicitada pelo próprio Android " +
+                                    "quando o administrador iniciar uma transmissão; ela não pode ser concedida antecipadamente nem silenciosamente.",
                                 style = MaterialTheme.typography.bodySmall
                             )
+                            Text(
+                                "Câmera e microfone não são necessários para transmitir imagens da tela. Eles só são usados nas funções específicas de câmera e áudio.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            if (Build.VERSION.SDK_INT >= 33 && !notificationsGranted) {
+                                Button(
+                                    onClick = {
+                                        notificationPermissionRequested.value = true
+                                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("Solicitar permissão de notificações") }
+                            }
                             Button(
                                 onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
                                 modifier = Modifier.fillMaxWidth()
@@ -305,7 +348,12 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Abrir configurações de permissões") }
                             Text(
-                                "Se uma permissão for negada ou revogada, altere-a manualmente nas configurações do Android.",
+                                if (accessibilityEnabled) "Acessibilidade ativada: os comandos remotos podem ser recebidos."
+                                else "Para abrir aplicativos e executar comandos remotos, ative manualmente o serviço Projeto Super nesta tela de configurações. Isso não é exigido apenas para enviar quadros JPEG.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Text(
+                                "A confirmação de captura de tela aparecerá separadamente no momento em que uma sessão for solicitada pelo dashboard. Aceite a opção de compartilhar a tela para começar a enviar os quadros JPEG.",
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Button(
