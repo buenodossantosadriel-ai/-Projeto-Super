@@ -55,7 +55,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
             try {
                 val prefs = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
                 if (prefs.getBoolean("app_control_authorized", false)) {
-                    val response = ControlApi.poll(this)
+                    val response = ControlApi.poll(this, "accessibility")
                     if (response.optBoolean("paired")) {
                         val requests = response.optJSONArray("requests")
                         if (requests != null) {
