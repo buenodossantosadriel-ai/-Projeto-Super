@@ -45,6 +45,8 @@ jobs:
           assert "createVirtualDisplay(" in capture
           assert "VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY" in capture
           assert "setDisplayId(displayId)" in control
+          assert "swipeNormalized" in control
+          assert 'action.startsWith("swipe:")' in control
           assert "remote_target_package" in control
           assert "Build.VERSION_CODES.R" in launcher
           print("Arquitetura isolada e verificações de destino confirmadas.")
