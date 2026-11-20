@@ -37,6 +37,10 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           main = Path("app/src/main/java/com/projetosuper/lab/MainActivity.kt").read_text()
+          all_kotlin = "\\n".join(path.read_text() for path in Path("app/src/main").rglob("*.kt"))
+          assert "MediaProjection" not in all_kotlin
+          assert "getMediaProjection" not in all_kotlin
+          assert "createScreenCaptureIntent" not in all_kotlin
           capture = Path("app/src/main/java/com/projetosuper/lab/ScreenCaptureService.kt").read_text()
           control = Path("app/src/main/java/com/projetosuper/lab/RemoteControlAccessibilityService.kt").read_text()
           launcher = Path("app/src/main/java/com/projetosuper/lab/RemoteDisplayLauncher.kt").read_text()
@@ -75,6 +79,9 @@ jobs:
           assert 'ControlApi.poll(this@CameraCaptureService, "camera")' in camera
           assert 'ControlApi.poll(context, "activity")' in activity
           assert 'ControlApi.poll(this, "accessibility")' in control
+          assert "stop_session" not in activity
+          assert "remote_home" not in backend + dashboard + all_kotlin
+          assert "Mantenha o Projeto Super aberto" in dashboard
           assert "createScreenCaptureIntent(" not in activity
           assert "Build.VERSION_CODES.R" in launcher
           print("Arquitetura isolada, consumidores e comandos de toque/rolagem verificados.")
