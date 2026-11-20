@@ -50,8 +50,14 @@ jobs:
           assert "swipeNormalized" in control
           assert 'action.startsWith("swipe:")' in control
           assert "remote_target_package" in control
+          assert 'ControlApi.poll(this, "accessibility")' in control
+          backend = Path("supabase/functions/projeto-super-controle/index.ts").read_text()
+          assert 'action.startsWith("swipe:")' in backend
+          assert "const isSwipe =" in backend
+          assert "(isTap || isSwipe)" in backend
+          assert "isRemoteNavigation || isTap || isSwipe || isTypeText" in backend
           assert "Build.VERSION_CODES.R" in launcher
-          print("Arquitetura isolada e verificações de destino confirmadas.")
+          print("Arquitetura isolada, consumidores e comandos de toque/rolagem verificados.")
           PY
 
       - name: Compilar fontes da variante release (sem gerar APK)
