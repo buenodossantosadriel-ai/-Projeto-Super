@@ -85,7 +85,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         }
     }
 
-    private suspend fun executeAuthorizedCommand(request: JSONObject) {
+    suspend fun executeAuthorizedCommand(request: JSONObject) {
         val requestId = request.optString("id")
         val action = request.optString("action")
         if (requestId.isBlank()) return
