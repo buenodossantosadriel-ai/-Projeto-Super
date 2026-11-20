@@ -149,7 +149,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         } catch (error: Exception) {
             try { ControlApi.decide(this, requestId, false) } catch (_: Exception) {}
             android.util.Log.e("ProjetoSuperRemote", "Comando remoto recusado: ${error.message}", error)
-            false
+            return false
         }
     }
 
