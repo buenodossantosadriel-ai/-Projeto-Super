@@ -175,12 +175,12 @@ class MainActivity : ComponentActivity() {
                                     "Telefone registrado. Aguardando aprovação no dashboard administrativo."
                                 !appControlAuthorized.value ->
                                     "Telefone vinculado. Aguardando sua autorização geral para liberar os comandos remotos."
-                                !isAccessibilityServiceEnabled(context) ->
-                                    "Autorização geral ativa. Ative o serviço de Acessibilidade nas configurações para abrir apps, tocar, digitar e navegar."
                                 Build.VERSION.SDK_INT < Build.VERSION_CODES.R ->
                                     "Este aparelho pode instalar o Projeto Super, mas o controle isolado de aplicativos exige Android 11 ou superior."
                                 !context.packageManager.hasSystemFeature(PackageManager.FEATURE_ACTIVITIES_ON_SECONDARY_DISPLAYS) ->
                                     "Este aparelho não declara suporte a atividades em displays secundários; o controle isolado não estará disponível."
+                                !isAccessibilityServiceEnabled(context) ->
+                                    "Autorização geral ativa. Ative o serviço de Acessibilidade nas configurações para abrir apps, tocar, digitar e navegar."
                                 else ->
                                     "Telefone vinculado e autorizado. Apps originais podem ser controlados no display virtual; a tela física não é capturada."
                             }
