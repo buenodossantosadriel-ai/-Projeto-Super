@@ -63,12 +63,6 @@ class MainActivity : ComponentActivity() {
             .sortedBy { it.label.lowercase() }
     }
 
-    private suspend fun runAuthorizedAppCommand(context: Context, request: JSONObject) {
-        val service = RemoteControlAccessibilityService.activeInstance
-            ?: error("Ative a acessibilidade do Projeto Super nas configurações do Android.")
-        check(service.executeAuthorizedCommand(request)) { "O comando remoto não foi concluído no display virtual." }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -177,7 +171,7 @@ class MainActivity : ComponentActivity() {
                 try {
                     val credentials = ControlApi.ensureRegistered(context)
                     deviceId.value = credentials.deviceId
-                    deviceStatus.value = "Dispositivo conectado e vinculado automaticamente à conta administrativa."
+                    deviceStatus.value = "Dispositivo registrado. Aguardando aprovação no dashboard administrativo."
                 } catch (error: Exception) {
                     deviceError.value = error.message ?: "Falha ao registrar o dispositivo."
                     deviceStatus.value = "Não foi possível conectar ao servidor."
@@ -203,7 +197,7 @@ class MainActivity : ComponentActivity() {
                                 lastAppsSyncAt = now
                             }
                             deviceStatus.value = if (devicePaired.value) {
-                                "Dispositivo vinculado. Com autorização geral ativa, os comandos de aplicativos são processados pelo serviço de acessibilidade e enviados ao display virtual."
+                                "Dispositivo vinculado. Com autorização geral ativa, o serviço de acessibilidade controla a tela principal do telefone; a transmissão JPEG é uma sessão separada."
                             } else {
                                 "Conectando automaticamente à conta administrativa..."
                             }
@@ -218,6 +212,7 @@ class MainActivity : ComponentActivity() {
                                             ControlApi.decide(context, candidate.optString("id"), true)
                                             context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
                                             context.startService(Intent(context, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP))
+                                    context.startService(Intent(context, CameraCaptureService::class.java).setAction(CameraCaptureService.ACTION_STOP))
                                         } catch (error: Exception) {
                                             deviceError.value = error.message ?: "Não foi possível encerrar a sessão."
                                         }
@@ -298,12 +293,13 @@ class MainActivity : ComponentActivity() {
                             Text(deviceStatus.value)
                             Text(
                                 if (devicePaired.value) "Este aparelho está vinculado à conta administrativa."
-                                else "O vínculo automático está sendo concluído. Nenhum código ou aprovação manual é necessário."
+                                else "Aguardando aprovação deste telefone no dashboard administrativo."
                             )
                             Button(
                                 onClick = {
                                     context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
                                     context.startService(Intent(context, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP))
+                                    context.startService(Intent(context, CameraCaptureService::class.java).setAction(CameraCaptureService.ACTION_STOP))
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Encerrar qualquer sessão neste aparelho") }
@@ -353,7 +349,7 @@ class MainActivity : ComponentActivity() {
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Text(
-                                "A confirmação de captura de tela aparecerá separadamente no momento em que uma sessão for solicitada pelo dashboard. Aceite a opção de compartilhar a tela para começar a enviar os quadros JPEG.",
+                                "A visualização captura a tela principal do telefone por MediaProjection e envia quadros JPEG. Para abrir aplicativos, tocar, digitar ou usar Voltar/Início, o serviço de acessibilidade deve estar ativado. Cada nova sessão de tela exige a confirmação nativa do Android.",
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Button(
@@ -490,18 +486,9 @@ class MainActivity : ComponentActivity() {
                     val description = when (action) {
                         "camera_front" -> "O painel administrativo solicitou acesso à câmera frontal. A câmera ficará ativa enquanto a sessão estiver aberta."
                         "camera_back" -> "O painel administrativo solicitou acesso à câmera traseira. A câmera ficará ativa enquanto a sessão estiver aberta."
-                        "screen_share" -> "O painel administrativo solicitou compartilhar a tela. Se aceitar aqui, o Android ainda mostrará sua confirmação nativa."
                         "microphone_live" -> "O painel administrativo solicitou áudio ao vivo pelo microfone. O microfone ficará ativo e haverá uma notificação persistente."
                         "microphone_record" -> "O painel administrativo solicitou uma gravação de áudio. A gravação só começará após sua confirmação e ficará indicada por notificação."
-                        else -> if (action.startsWith("open_app:")) {
-                            val packageName = action.substringAfter("open_app:")
-                            val appName = apps.value.firstOrNull { it.packageName == packageName }?.label ?: packageName
-                            "O painel administrativo solicitou abrir o aplicativo $appName ($packageName). Ele só será aberto se você aceitar."
-                        } else if (action.startsWith("tap:")) {
-                            "O dashboard solicitou um toque na tela compartilhada. Confirme para executar."
-                        } else if (action == "remote_back" || action == "remote_home") {
-                            "O dashboard solicitou navegação remota. Confirme para executar."
-                        } else "O painel administrativo solicitou iniciar uma sessão."
+                        else -> "O painel administrativo solicitou iniciar uma sessão."
                     }
                     AlertDialog(
                         onDismissRequest = {
@@ -571,6 +558,13 @@ class MainActivity : ComponentActivity() {
                                                     check(sessionId.isNotBlank()) { "O servidor não confirmou a sessão." }
                                                     createdSessionId = sessionId
                                                     when (action) {
+                                                        "camera_front", "camera_back" -> {
+                                                            val start = Intent(context, CameraCaptureService::class.java)
+                                                                .setAction(CameraCaptureService.ACTION_START)
+                                                                .putExtra(CameraCaptureService.EXTRA_SESSION_ID, sessionId)
+                                                                .putExtra(CameraCaptureService.EXTRA_LENS, if (action == "camera_front") "front" else "back")
+                                                            ContextCompat.startForegroundService(context, start)
+                                                        }
                                                         "microphone_live", "microphone_record" -> {
                                                             val start = Intent(context, AudioCaptureService::class.java)
                                                                 .setAction(AudioCaptureService.ACTION_START)
