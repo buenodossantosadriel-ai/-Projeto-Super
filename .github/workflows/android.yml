@@ -66,7 +66,7 @@ jobs:
           assert "if (!selectedAppFocused) return@withContext false" in control
           assert "rootInActiveWindow" not in control
           assert "performGlobalAction(GLOBAL_ACTION_BACK)" in control
-          assert "ControlApi.poll(this, \\"accessibility\\")" in control
+          assert 'ControlApi.poll(this, "accessibility")' in control
           assert "ControlApi.uploadFrame" in capture
           assert 'ControlApi.poll(this@ScreenCaptureService, "screen")' in capture
           assert "remoteControlReady()" in capture
