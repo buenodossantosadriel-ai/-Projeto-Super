@@ -206,10 +206,15 @@ class MainActivity : ComponentActivity() {
                                 appsSynced.value = true
                                 lastAppsSyncAt = now
                             }
-                            deviceStatus.value = if (devicePaired.value) {
-                                "Dispositivo vinculado. Com autorização geral ativa, o serviço de acessibilidade controla a tela principal do telefone; a transmissão JPEG é uma sessão separada."
-                            } else {
-                                "Telefone registrado. Aguardando aprovação no dashboard administrativo."
+                            deviceStatus.value = when {
+                                !devicePaired.value ->
+                                    "Telefone registrado. Aguardando aprovação no dashboard administrativo."
+                                !appControlAuthorized.value ->
+                                    "Telefone vinculado. Aguardando sua autorização geral para liberar os comandos remotos."
+                                !isAccessibilityServiceEnabled(context) ->
+                                    "Autorização geral ativa. Ative o serviço de Acessibilidade nas configurações para abrir apps, tocar, digitar e navegar."
+                                else ->
+                                    "Telefone vinculado e autorizado. Controle de aplicativos disponível; a tela será transmitida em JPEG após a confirmação do Android."
                             }
                             val requests = response.optJSONArray("requests")
                             if (pendingRequest.value == null && !busy.value && requests != null) {
