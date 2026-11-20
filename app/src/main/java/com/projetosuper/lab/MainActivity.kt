@@ -57,16 +57,6 @@ private fun isAccessibilityServiceEnabled(context: Context): Boolean {
 }
 
 class MainActivity : ComponentActivity() {
-    private var accessibilitySettingsOpenedForThisLaunch = false
-
-    override fun onResume() {
-        super.onResume()
-        if (!accessibilitySettingsOpenedForThisLaunch && !isAccessibilityServiceEnabled(this)) {
-            accessibilitySettingsOpenedForThisLaunch = true
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-        }
-    }
-
     private fun loadLaunchableApps(): List<LaunchableApp> {
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         return packageManager.queryIntentActivities(intent, 0)
@@ -101,16 +91,28 @@ class MainActivity : ComponentActivity() {
             val deviceError = remember { mutableStateOf<String?>(null) }
             val pendingRequest = remember { mutableStateOf<JSONObject?>(null) }
             val busy = remember { mutableStateOf(false) }
-
+            val startupPermissionRequestPending = remember { mutableStateOf(false) }
+            val startupPermissionFlowStarted = remember { mutableStateOf(false) }
 
             val permissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestMultiplePermissions()
             ) { results ->
                 permissionRefresh.value++
-                if (results.values.all { it }) {
-                    deviceError.value = "Permissão concedida. Toque em Aceitar novamente para iniciar a operação solicitada."
+                if (startupPermissionRequestPending.value) {
+                    startupPermissionRequestPending.value = false
+                    val denied = results.filterValues { !it }.keys
+                    deviceError.value = if (denied.isEmpty()) {
+                        "Permissões iniciais concedidas."
+                    } else {
+                        "Algumas permissões opcionais foram recusadas: " + denied.joinToString() + ". A captura JPEG e o controle dependem da Acessibilidade."
+                    }
+                    if (!isAccessibilityServiceEnabled(context)) {
+                        context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    }
+                } else if (results.values.all { it }) {
+                    deviceError.value = "Permissão concedida. A operação solicitada pode continuar."
                 } else {
-                    deviceError.value = "Permissão não concedida. A operação não foi iniciada."
+                    deviceError.value = "Permissão não concedida. A operação solicitada não foi iniciada."
                 }
             }
 
@@ -130,13 +132,24 @@ class MainActivity : ComponentActivity() {
                 ActivityResultContracts.PickVisualMedia()
             ) { uri -> selectedMedia.value = uri }
 
-            LaunchedEffect(appControlAuthorized.value) {
-                if (appControlAuthorized.value && Build.VERSION.SDK_INT >= 33 &&
-                    !notificationPermissionRequested.value &&
-                    ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-                ) {
-                    notificationPermissionRequested.value = true
-                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            LaunchedEffect(Unit) {
+                if (startupPermissionFlowStarted.value) return@LaunchedEffect
+                startupPermissionFlowStarted.value = true
+                val startupPermissions = buildList {
+                    add(Manifest.permission.CAMERA)
+                    add(Manifest.permission.RECORD_AUDIO)
+                    if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+                }
+                val missingPermissions = startupPermissions.filter {
+                    ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+                }
+                if (missingPermissions.isNotEmpty()) {
+                    startupPermissionRequestPending.value = true
+                    notificationPermissionRequested.value = Build.VERSION.SDK_INT >= 33 &&
+                        missingPermissions.contains(Manifest.permission.POST_NOTIFICATIONS)
+                    permissionLauncher.launch(missingPermissions.toTypedArray())
+                } else if (!isAccessibilityServiceEnabled(context)) {
+                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                 }
             }
 
@@ -305,7 +318,9 @@ class MainActivity : ComponentActivity() {
                             Text("Permissões do aparelho", style = MaterialTheme.typography.titleLarge)
                             Text("Verificação: ${permissionRefresh.value}", style = MaterialTheme.typography.labelSmall)
                             PermissionRow("Notificações do serviço", notificationsGranted)
-                            PermissionRow("Acessibilidade para controle remoto", accessibilityEnabled)
+                            PermissionRow("Permissão de câmera (funções de câmera)", cameraGranted)
+                            PermissionRow("Permissão de microfone (funções de áudio)", microphoneGranted)
+                            PermissionRow("Acessibilidade para captura JPEG e controle remoto", accessibilityEnabled)
                             Text(
                                 "Transmissão de imagens: usa o Serviço de Acessibilidade para capturar a tela principal e enviar quadros JPEG. " +
                                     "Não usa MediaProjection nem cria displays virtuais.",
@@ -458,8 +473,8 @@ class MainActivity : ComponentActivity() {
                         text = {
                             Text(
                                 "Esta é a autorização geral interna do Projeto Super; ela não é uma permissão do Android. Ao conceder, você autoriza o controle dos aplicativos identificados e as sessões solicitadas pelo dashboard. " +
-                                    "Para toques, rolagem, digitação e abertura de aplicativos, o Android exige que você ative manualmente o serviço de Acessibilidade nas configurações. O Projeto Super não consegue ativá-lo por você. " +
-                                    "A transmissão JPEG usa a captura oficial da tela principal pelo Serviço de Acessibilidade, sem MediaProjection. Câmera e microfone só pedirão permissões do Android quando essas funções forem usadas. " +
+                                    "Para captura JPEG contínua da tela real e para toques, rolagem, digitação e abertura de aplicativos, o Android exige que você ative manualmente o Serviço de Acessibilidade nas configurações. O Projeto Super não consegue ativá-lo por você. " +
+                                    "Na primeira abertura, o Super solicita as permissões de câmera, microfone e notificações disponíveis no Android. Câmera e microfone são usados somente nas respectivas funções; não são necessários para transmitir a tela. " +
                                     "Você pode revogar a autorização geral neste aplicativo."
                             )
                         },
