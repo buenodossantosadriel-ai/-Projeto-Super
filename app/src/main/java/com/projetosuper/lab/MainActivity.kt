@@ -229,19 +229,6 @@ class MainActivity : ComponentActivity() {
                                         break
                                     }
                                     val requestedAction = candidate.optString("action")
-                                    val isAppCommand = requestedAction.startsWith("open_app:") ||
-                                        requestedAction.startsWith("tap:") ||
-                                        requestedAction.startsWith("type_text:") ||
-                                        requestedAction == "remote_back" || requestedAction == "remote_home"
-                                    if (isAppCommand) {
-                                        if (!appControlAuthorized.value) {
-                                            deviceError.value = "Aguardando a autorização geral inicial."
-                                        } else if (RemoteControlAccessibilityService.activeInstance == null) {
-                                            deviceError.value = "Ative a acessibilidade do Projeto Super para receber comandos remotos."
-                                        }
-                                        // Somente o serviço de acessibilidade consome comandos de aplicativos.
-                                        continue
-                                    }
                                     if (requestedAction == "screen_share") {
                                         if (!appControlAuthorized.value) {
                                             deviceError.value = "Aguardando a autorização geral inicial."
