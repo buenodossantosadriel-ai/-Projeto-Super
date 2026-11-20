@@ -31,7 +31,6 @@ function randomHex(size: number) {
 }
 async function clearSessionFrames(admin: ReturnType<typeof createClient>, sessionIds: string[]) {
   if (!sessionIds.length) return;
-  await admin.from("projeto_super_webrtc_signals").delete().in("session_id", sessionIds);
   const { data: frames } = await admin.from("projeto_super_live_frames")
     .select("id,storage_path").in("session_id", sessionIds);
   if (frames?.length) {
@@ -222,93 +221,6 @@ Deno.serve(async (req: Request) => {
         row = data;
       }
       return respond({ ok: true, device_id: row.id, status: "paired", paired: true }, 200);
-    }
-
-    // Sinalização WebRTC: Supabase transporta apenas SDP/ICE; mídia não passa pelo servidor.
-    if (action === "webrtc_send" || action === "webrtc_poll" || action === "webrtc_ice_config") {
-      const sessionId = String(body.session_id || "");
-      const signalType = String(body.signal_type || "");
-      const allowedTypes = ["offer", "answer", "candidate", "renegotiate", "hangup"];
-      if (!sessionId || !/^[0-9a-f-]{36}$/i.test(sessionId)) {
-        return respond({ ok: false, error: "Sessão WebRTC inválida." }, 400);
-      }
-      let sender: "device" | "owner";
-      let deviceId = "";
-      let ownerId = "";
-      if (deviceSecret) {
-        const device = await getDevice(String(body.device_id || ""));
-        if (!device || device.status !== "paired" || !device.owner_user_id) {
-          return respond({ ok: false, error: "Dispositivo não autenticado ou não vinculado." }, 401);
-        }
-        sender = "device";
-        deviceId = device.id;
-        ownerId = device.owner_user_id;
-      } else {
-        const owner = await getOwner();
-        if (!owner) return respond({ ok: false, error: "Sessão administrativa inválida." }, 401);
-        if ((owner.email || "").toLowerCase() !== "elisareisrodrigues05@gmail.com") {
-          return respond({ ok: false, error: "Conta sem autorização administrativa." }, 403);
-        }
-        sender = "owner";
-        ownerId = owner.id;
-      }
-      const { data: liveSession, error: sessionError } = await admin.from("projeto_super_device_sessions")
-        .select("id,device_id,owner_user_id,status,session_type")
-        .eq("id", sessionId).eq("owner_user_id", ownerId).maybeSingle();
-      if (sessionError || !liveSession || liveSession.status !== "active" ||
-          !["camera_front", "camera_back", "screen_share"].includes(liveSession.session_type) ||
-          (sender === "device" && liveSession.device_id !== deviceId)) {
-        return respond({ ok: false, error: "Sessão de mídia não está ativa ou não pertence a este usuário." }, 409);
-      }
-      if (action === "webrtc_ice_config") {
-        const username = Deno.env.get("METERED_TURN_USERNAME") || "";
-        const credential = Deno.env.get("METERED_TURN_CREDENTIAL") || "";
-        const turnConfigured = Boolean(username && credential);
-        const urls = [
-          "stun:stun.relay.metered.ca:80",
-          "stun:stun.l.google.com:19302",
-        ];
-        if (turnConfigured) {
-          urls.push(
-            "turn:standard.relay.metered.ca:80",
-            "turn:standard.relay.metered.ca:80?transport=tcp",
-            "turn:standard.relay.metered.ca:443?transport=tcp",
-            "turns:standard.relay.metered.ca:443?transport=tcp",
-          );
-        }
-        const iceServers = urls.map((url) => url.startsWith("stun:")
-          ? { urls: url }
-          : { urls: url, username, credential });
-        return respond({
-          ok: true,
-          iceServers,
-          provider: turnConfigured ? "Metered" : "STUN fallback",
-          relay: "standard.relay.metered.ca",
-          turnConfigured,
-          warning: turnConfigured ? null : "TURN não configurado; conexões que exigem relay podem falhar.",
-        });
-      }
-      if (action === "webrtc_send") {
-        if (!allowedTypes.includes(signalType)) return respond({ ok: false, error: "Tipo de sinal inválido." }, 400);
-        const payload = body.payload;
-        if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
-            new TextEncoder().encode(JSON.stringify(payload)).length > 256 * 1024) {
-          return respond({ ok: false, error: "Conteúdo do sinal inválido ou muito grande." }, 413);
-        }
-        const { data, error } = await admin.from("projeto_super_webrtc_signals").insert({
-          session_id: sessionId, sender, signal_type: signalType, payload,
-        }).select("id").single();
-        if (error || !data) return respond({ ok: false, error: "Não foi possível registrar o sinal WebRTC." }, 500);
-        return respond({ ok: true, signal_id: data.id });
-      }
-      const afterId = Number(body.after_id || 0);
-      if (!Number.isSafeInteger(afterId) || afterId < 0) return respond({ ok: false, error: "Cursor de sinal inválido." }, 400);
-      const { data, error } = await admin.from("projeto_super_webrtc_signals")
-        .select("id,sender,signal_type,payload,created_at")
-        .eq("session_id", sessionId).neq("sender", sender).gt("id", afterId)
-        .order("id", { ascending: true }).limit(100);
-      if (error) return respond({ ok: false, error: "Não foi possível consultar os sinais WebRTC." }, 500);
-      return respond({ ok: true, signals: data || [], next_after_id: data?.length ? data[data.length - 1].id : afterId });
     }
 
     if (action === "device_poll" || action === "device_sync_apps" || action === "device_decide" || action === "start_session" || action === "stop_session") {
