@@ -11,11 +11,11 @@ permissions:
 
 concurrency:
   group: projeto-super-android-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
-    name: Compilar APK de teste
+    name: Compilar APK original atualizado
     runs-on: ubuntu-latest
     steps:
       - name: Baixar código
@@ -32,7 +32,7 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Compilar APK
+      - name: Compilar APK original
         run: gradle assembleDebug
 
       - name: Validar JavaScript do dashboard
@@ -50,6 +50,6 @@ jobs:
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: projeto-super-debug-apk
+          name: projeto-super-original-atualizado
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
