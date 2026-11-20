@@ -84,7 +84,22 @@ jobs:
           assert "Mantenha o Projeto Super aberto" in dashboard
           assert "createScreenCaptureIntent(" not in activity
           assert "Build.VERSION_CODES.R" in launcher
-          print("Arquitetura isolada, consumidores e comandos de toque/rolagem verificados.")
+          assert "isAccessibilityServiceEnabled(context)" in main
+          assert "FEATURE_ACTIVITIES_ON_SECONDARY_DISPLAYS" in main
+          assert "Autorização geral revogada. Sessões locais encerradas" in main
+          assert "ScreenCaptureService.ACTION_STOP" in main
+          assert "AudioCaptureService.ACTION_STOP" in main
+          assert "CameraCaptureService.ACTION_STOP" in main
+          assert '.limit(50)' in backend
+          assert 'expectedConsumer === consumer' in backend
+          assert 'file.type !== "image/jpeg"' in backend
+          assert '"image/png"' not in backend
+          assert 'image/jpeg' in capture
+          assert 'setLaunchDisplayId(displayId)' in launcher
+          assert 'd.active_session?.session_type==="screen_share"' in dashboard
+          assert 'sendText.disabled=!canRemote' in dashboard
+          assert "WebRTC" not in all_kotlin + dashboard
+          print("Arquitetura isolada, permissões, fila de comandos e transporte JPEG verificados.")
           PY
 
       - name: Compilar fontes da variante release (sem gerar APK)
