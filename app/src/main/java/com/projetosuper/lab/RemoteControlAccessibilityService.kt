@@ -279,24 +279,21 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
         val displayId = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
             .getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.INVALID_DISPLAY)
-        if (displayId == android.view.Display.INVALID_DISPLAY) return false
+        if (displayId == android.view.Display.INVALID_DISPLAY ||
+            displayId == android.view.Display.DEFAULT_DISPLAY) return false
         val expectedPackage = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
             .getString("remote_target_package", null) ?: return false
-        val root = if (displayId != android.view.Display.DEFAULT_DISPLAY) {
-            val windows = getWindowsOnAllDisplays().get(displayId).orEmpty()
-            val targetWindow = windows.firstOrNull { window ->
-                if (!window.isFocused && !window.isActive) return@firstOrNull false
-                val candidateRoot = window.root ?: return@firstOrNull false
-                try {
-                    candidateRoot.packageName?.toString() == expectedPackage
-                } finally {
-                    candidateRoot.recycle()
-                }
+        val windows = getWindowsOnAllDisplays().get(displayId).orEmpty()
+        val targetWindow = windows.firstOrNull { window ->
+            if (!window.isFocused && !window.isActive) return@firstOrNull false
+            val candidateRoot = window.root ?: return@firstOrNull false
+            try {
+                candidateRoot.packageName?.toString() == expectedPackage
+            } finally {
+                candidateRoot.recycle()
             }
-            targetWindow?.root
-        } else {
-            rootInActiveWindow
-        } ?: return false
+        }
+        val root = targetWindow?.root ?: return false
         try {
             if (root.packageName?.toString() != expectedPackage) return false
             val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
