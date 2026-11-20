@@ -42,6 +42,7 @@ class AudioCaptureService : LifecycleService() {
     @Volatile private var sessionId = ""
     @Volatile private var mode = "live"
     @Volatile private var stopping = false
+    @Volatile private var starting = false
     private var recorder: AudioRecord? = null
     private val uploading = AtomicBoolean(false)
 
@@ -51,19 +52,24 @@ class AudioCaptureService : LifecycleService() {
             stopCapture()
             return START_NOT_STICKY
         }
+        if (starting || recorder != null || stopping) {
+            android.util.Log.w("ProjetoSuperAudio", "Solicitação duplicada de microfone ignorada.")
+            return START_NOT_STICKY
+        }
         sessionId = intent?.getStringExtra(EXTRA_SESSION_ID).orEmpty()
         mode = intent?.getStringExtra(EXTRA_MODE) ?: "live"
-        if (sessionId.isBlank() || mode !in listOf("live", "recording")) {
+        if (sessionId.isBlank()) {
             stopSelf()
             return START_NOT_STICKY
         }
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            stopSelf()
+        if (mode !in listOf("live", "recording") ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            stopCapture()
             return START_NOT_STICKY
         }
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            stopSelf()
+            stopCapture()
             return START_NOT_STICKY
         }
         createNotificationChannel()
@@ -83,6 +89,7 @@ class AudioCaptureService : LifecycleService() {
             .build()
         val type = if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type)
+        starting = true
         startRecording()
         watchStopRequests()
         return START_NOT_STICKY
@@ -108,7 +115,9 @@ class AudioCaptureService : LifecycleService() {
             recorder = audio
             try {
                 if (audio.state != AudioRecord.STATE_INITIALIZED) throw IllegalStateException("Não foi possível inicializar o microfone.")
+                if (stopping) return@launch
                 audio.startRecording()
+                starting = false
                 var chunkIndex = 0L
                 while (isActive && !stopping && audio.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
                     val pcm = ByteArray(chunkBytes)
@@ -131,6 +140,7 @@ class AudioCaptureService : LifecycleService() {
                 try { if (audio.recordingState == AudioRecord.RECORDSTATE_RECORDING) audio.stop() } catch (_: Exception) {}
                 audio.release()
                 recorder = null
+                starting = false
                 stopCapture()
             }
         }
