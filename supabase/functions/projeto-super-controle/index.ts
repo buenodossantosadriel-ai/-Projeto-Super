@@ -196,34 +196,55 @@ Deno.serve(async (req: Request) => {
 
     if (action === "register_device") {
       if (deviceSecret.length < 40) return respond({ ok: false, error: "Chave de dispositivo inválida." }, 400);
-      // Novas instalações ficam pendentes até o administrador aprovar o aparelho.
-      // Revalida o segredo da instalação sem trocar proprietário nem reativar vínculos revogados.
+      // O vínculo automático é restrito à única conta administrativa do Projeto Super.
+      // Cada instalação gera um segredo aleatório próprio, armazenado cifrado no Android.
+      // Dispositivos revogados nunca são reativados por uma chamada de registro.
+      const adminOwnerId = "fbde6bdd-35ba-4738-b523-74d71fcd3593";
       const deviceId = String(body.device_id || "");
       const deviceName = String(body.device_name || "Dispositivo Android").slice(0, 80);
       let row;
       if (deviceId) {
         const { data, error } = await admin.from("projeto_super_devices").update({
           device_name: deviceName,
+          owner_user_id: adminOwnerId,
+          status: "paired",
         }).eq("id", deviceId).eq("device_secret_hash", deviceHash)
-          .in("status", ["unpaired", "paired"])
+          .eq("status", "unpaired")
+          .is("owner_user_id", null)
           .select("id,status,owner_user_id").maybeSingle();
-        if (error || !data) return respond({ ok: false, error: "Dispositivo não encontrado, revogado ou chave inválida." }, 401);
-        row = data;
+        if (error) return respond({ ok: false, error: "Falha ao validar o vínculo do dispositivo." }, 500);
+        if (data) {
+          row = data;
+        } else {
+          const { data: existing, error: lookupError } = await admin.from("projeto_super_devices")
+            .select("id,status,owner_user_id").eq("id", deviceId)
+            .eq("device_secret_hash", deviceHash).maybeSingle();
+          if (lookupError || !existing || existing.status === "revoked" ||
+              existing.owner_user_id !== adminOwnerId || existing.status !== "paired") {
+            return respond({ ok: false, error: "Dispositivo não encontrado, revogado ou chave inválida." }, 401);
+          }
+          const { data: refreshed, error: refreshError } = await admin.from("projeto_super_devices")
+            .update({ device_name: deviceName }).eq("id", deviceId)
+            .eq("device_secret_hash", deviceHash).eq("owner_user_id", adminOwnerId)
+            .eq("status", "paired").select("id,status,owner_user_id").single();
+          if (refreshError || !refreshed) return respond({ ok: false, error: "Não foi possível atualizar o dispositivo." }, 500);
+          row = refreshed;
+        }
       } else {
         const { data, error } = await admin.from("projeto_super_devices").insert({
           device_secret_hash: deviceHash,
           device_name: deviceName,
-          owner_user_id: null,
-          status: "unpaired",
+          owner_user_id: adminOwnerId,
+          status: "paired",
         }).select("id,status,owner_user_id").single();
-        if (error || !data) return respond({ ok: false, error: "Não foi possível registrar o dispositivo." }, 500);
+        if (error || !data) return respond({ ok: false, error: "Não foi possível registrar e vincular o dispositivo." }, 500);
         row = data;
       }
       return respond({
         ok: true,
         device_id: row.id,
         status: row.status,
-        paired: row.status === "paired",
+        paired: row.status === "paired" && row.owner_user_id === adminOwnerId,
       }, 200);
     }
 
@@ -492,8 +513,8 @@ Deno.serve(async (req: Request) => {
         await clearAudioChunks(admin, [activeSession[0].id], "live");
         hasActiveSession = false;
       }
-      const isScreenControlCommand = isOpenApp || isRemoteNavigation || isTap || isSwipe || isTypeText;
-      if (isScreenControlCommand &&
+      const isRemoteDisplayCommand = isOpenApp || isRemoteNavigation || isTap || isSwipe || isTypeText;
+      if (isRemoteDisplayCommand &&
           (!hasActiveSession || activeSession?.[0]?.session_type !== "screen_share")) {
         return respond({
           ok: false,
