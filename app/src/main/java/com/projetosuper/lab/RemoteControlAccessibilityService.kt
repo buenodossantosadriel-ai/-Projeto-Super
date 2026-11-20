@@ -3,11 +3,11 @@ package com.projetosuper.lab
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.Path
-import android.hardware.display.DisplayManager
 import android.os.Bundle
-import android.os.Build
 import android.os.Handler
+import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import kotlinx.coroutines.CoroutineScope
@@ -17,15 +17,17 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import kotlin.coroutines.resume
 import org.json.JSONObject
 
 /**
- * Serviço opt-in. O usuário ativa manualmente nas configurações do Android.
- * Não coleta eventos ou conteúdo em segundo plano. Consulta a árvore da tela apenas
- * quando recebe um comando de texto autorizado e explícito.
+ * Serviço opt-in do Projeto Super.
+ * Só captura a tela ou executa comandos durante uma sessão autorizada e ativa.
+ * A captura usa a API oficial takeScreenshot do próprio AccessibilityService e
+ * envia quadros JPEG; não cria display virtual nem usa MediaProjection.
  */
 class RemoteControlAccessibilityService : AccessibilityService() {
     companion object {
@@ -53,6 +55,62 @@ class RemoteControlAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() = Unit
 
+    /**
+     * Captura somente o display principal autorizado pelo Android.
+     * A API exige a capability canTakeScreenshot declarada no XML do serviço.
+     */
+    suspend fun captureJpegFrame(): ByteArray? = withContext(Dispatchers.Main) {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R) return@withContext null
+        suspendCancellableCoroutine { continuation ->
+            takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
+                override fun onSuccess(screenshot: ScreenshotResult) {
+                    val hardwareBuffer = screenshot.hardwareBuffer
+                    var hardwareBitmap: Bitmap? = null
+                    var argbBitmap: Bitmap? = null
+                    var scaledBitmap: Bitmap? = null
+                    try {
+                        hardwareBitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, screenshot.colorSpace)
+                            ?: error("O Android não disponibilizou o buffer da captura.")
+                        argbBitmap = hardwareBitmap.copy(Bitmap.Config.ARGB_8888, false)
+                            ?: error("Não foi possível converter a captura para bitmap.")
+                        hardwareBitmap.recycle()
+                        hardwareBitmap = null
+
+                        val targetWidth = minOf(800, argbBitmap.width)
+                        val targetHeight = (argbBitmap.height * (targetWidth.toFloat() / argbBitmap.width))
+                            .toInt().coerceAtLeast(1)
+                        scaledBitmap = if (targetWidth == argbBitmap.width) argbBitmap
+                            else Bitmap.createScaledBitmap(argbBitmap, targetWidth, targetHeight, true)
+
+                        getSharedPreferences("projeto_super_device", MODE_PRIVATE).edit()
+                            .putInt(RemoteDisplayLauncher.PREF_DISPLAY_WIDTH, targetWidth)
+                            .putInt(RemoteDisplayLauncher.PREF_DISPLAY_HEIGHT, targetHeight)
+                            .apply()
+
+                        val output = ByteArrayOutputStream()
+                        check(scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 58, output)) {
+                            "Não foi possível codificar o quadro JPEG."
+                        }
+                        if (continuation.isActive) continuation.resume(output.toByteArray())
+                    } catch (error: Exception) {
+                        android.util.Log.w("ProjetoSuperScreen", "Falha ao capturar JPEG: ${error.message}")
+                        if (continuation.isActive) continuation.resume(null)
+                    } finally {
+                        hardwareBuffer.close()
+                        hardwareBitmap?.recycle()
+                        if (scaledBitmap !== argbBitmap) scaledBitmap?.recycle()
+                        argbBitmap?.recycle()
+                    }
+                }
+
+                override fun onFailure(errorCode: Int) {
+                    android.util.Log.w("ProjetoSuperScreen", "A captura de tela foi recusada pelo Android. Código: $errorCode")
+                    if (continuation.isActive) continuation.resume(null)
+                }
+            })
+        }
+    }
+
     private suspend fun pollAuthorizedCommands() {
         while (serviceScope.isActive) {
             try {
@@ -69,7 +127,6 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                                     action.startsWith("tap:") ||
                                     action.startsWith("swipe:") ||
                                     action.startsWith("type_text:") || action == "remote_back") {
-                                    // Um único consumidor executa comandos, mesmo com a Activity em segundo plano.
                                     executeAuthorizedCommand(request)
                                     break
                                 }
@@ -77,10 +134,10 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                         }
                     }
                 }
-            } catch (_: Exception) {
-                // Falhas transitórias de rede não encerram o serviço.
+            } catch (error: Exception) {
+                android.util.Log.w("ProjetoSuperControl", "Falha transitória ao consultar comandos: ${error.message}")
             }
-            delay(2500)
+            delay(1500)
         }
     }
 
@@ -115,8 +172,8 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                             .edit().putString("remote_target_package", packageName).apply()
                         RemoteDisplayLauncher.start(this@RemoteControlAccessibilityService, launch)
                     }
-                    check(waitForAppOnDisplay(packageName)) {
-                        "O comando foi recebido, mas o Android não confirmou que o aplicativo apareceu no display virtual."
+                    check(waitForAppOnDefaultDisplay(packageName)) {
+                        "O Android não confirmou que o aplicativo solicitado abriu na tela principal."
                     }
                     ControlApi.decide(this, requestId, true)
                     decided = true
@@ -125,13 +182,15 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                     val value = action.substringAfter("type_text:")
                     check(value.isNotBlank() && value.length <= 2000) { "Texto inválido." }
                     check(setFocusedText(value)) {
-                        "Não foi possível inserir texto no campo focado do display remoto."
+                        "Não foi possível inserir texto no campo focado do aplicativo."
                     }
                     ControlApi.decide(this, requestId, true)
                     decided = true
                 }
                 action == "remote_back" -> {
-                    check(goBackOnVirtualDisplay()) { "O Android não aceitou o gesto Voltar no display virtual." }
+                    check(withContext(Dispatchers.Main) { performGlobalAction(GLOBAL_ACTION_BACK) }) {
+                        "O Android não aceitou o comando Voltar."
+                    }
                     ControlApi.decide(this, requestId, true)
                     decided = true
                 }
@@ -142,7 +201,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                     check(values.take(4).all { it in 0..1000 }) { "Rolagem fora dos limites." }
                     val duration = values[4].toLong().coerceIn(100L, 1500L)
                     check(swipeNormalized(values[0], values[1], values[2], values[3], duration)) {
-                        "O Android não aceitou a rolagem no display remoto."
+                        "O Android não aceitou a rolagem."
                     }
                     ControlApi.decide(this, requestId, true)
                     decided = true
@@ -153,7 +212,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                     val x = parts[1].toIntOrNull() ?: error("Coordenada X inválida.")
                     val y = parts[2].toIntOrNull() ?: error("Coordenada Y inválida.")
                     check(x in 0..1000 && y in 0..1000) { "Toque fora dos limites." }
-                    check(tapNormalized(x, y)) { "O Android não aceitou o toque no display remoto." }
+                    check(tapNormalized(x, y)) { "O Android não aceitou o toque." }
                     ControlApi.decide(this, requestId, true)
                     decided = true
                 }
@@ -172,20 +231,11 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         }
     }
 
-    /**
-     * Só confirma a abertura depois que uma janela do pacote solicitado aparece
-     * no display virtual. Isso evita sinalizar sucesso apenas porque startActivity retornou.
-     */
-    private suspend fun waitForAppOnDisplay(targetPackage: String): Boolean =
+    private suspend fun waitForAppOnDefaultDisplay(targetPackage: String): Boolean =
         withContext(Dispatchers.Main) {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return@withContext false
-            val displayId = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
-                .getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.INVALID_DISPLAY)
-            if (displayId == android.view.Display.INVALID_DISPLAY) return@withContext false
-
-            repeat(20) {
-                val windows = getWindowsOnAllDisplays().get(displayId).orEmpty()
+            repeat(24) {
                 val targetVisible = windows.any { window ->
+                    if (!window.isFocused && !window.isActive) return@any false
                     val root = window.root ?: return@any false
                     try {
                         root.packageName?.toString() == targetPackage
@@ -201,19 +251,13 @@ class RemoteControlAccessibilityService : AccessibilityService() {
 
     private fun packageNameOfSelf(): String = packageName
 
-    private suspend fun dispatchGestureOnDisplay(displayId: Int, path: Path, durationMs: Long): Boolean =
+    private suspend fun dispatchGestureOnDefaultDisplay(path: Path, durationMs: Long): Boolean =
         withContext(Dispatchers.Main) {
             if (!getSharedPreferences("projeto_super_device", MODE_PRIVATE)
-                    .getBoolean("app_control_authorized", false) ||
-                Build.VERSION.SDK_INT < Build.VERSION_CODES.R ||
-                displayId == android.view.Display.INVALID_DISPLAY ||
-                displayId == android.view.Display.DEFAULT_DISPLAY) return@withContext false
-            val targetDisplay = getSystemService(DisplayManager::class.java).getDisplay(displayId)
-                ?: return@withContext false
-            if (targetDisplay.flags and android.view.Display.FLAG_PRIVATE != 0) return@withContext false
+                    .getBoolean("app_control_authorized", false)) return@withContext false
             val expectedPackage = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
                 .getString("remote_target_package", null) ?: return@withContext false
-            val selectedAppFocused = getWindowsOnAllDisplays().get(displayId).orEmpty().any { window ->
+            val selectedAppFocused = windows.any { window ->
                 if (!window.isFocused && !window.isActive) return@any false
                 val root = window.root ?: return@any false
                 try {
@@ -224,7 +268,6 @@ class RemoteControlAccessibilityService : AccessibilityService() {
             }
             if (!selectedAppFocused) return@withContext false
             val gesture = GestureDescription.Builder()
-                .setDisplayId(displayId)
                 .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs.coerceIn(80, 1500)))
                 .build()
             suspendCancellableCoroutine { continuation ->
@@ -245,25 +288,13 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         }
 
     suspend fun tap(x: Float, y: Float): Boolean {
-        val displayId = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
-            .getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.INVALID_DISPLAY)
         val path = Path().apply { moveTo(x, y) }
-        return dispatchGestureOnDisplay(displayId, path, 80)
+        return dispatchGestureOnDefaultDisplay(path, 80)
     }
 
     suspend fun swipe(x1: Float, y1: Float, x2: Float, y2: Float, durationMs: Long): Boolean {
-        val displayId = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
-            .getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.INVALID_DISPLAY)
         val path = Path().apply { moveTo(x1, y1); lineTo(x2, y2) }
-        return dispatchGestureOnDisplay(displayId, path, durationMs)
-    }
-
-    private suspend fun goBackOnVirtualDisplay(): Boolean {
-        val prefs = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
-        val width = prefs.getInt(RemoteDisplayLauncher.PREF_DISPLAY_WIDTH, 0)
-        val height = prefs.getInt(RemoteDisplayLauncher.PREF_DISPLAY_HEIGHT, 0)
-        if (width <= 0 || height <= 0) return false
-        return swipe(2f, height * 0.5f, width * 0.65f, height * 0.5f, 320)
+        return dispatchGestureOnDefaultDisplay(path, durationMs)
     }
 
     suspend fun swipeNormalized(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long): Boolean {
@@ -291,19 +322,13 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         )
     }
 
-    /** Insere texto somente no campo que está focado naquele instante. */
+    /** Insere texto somente no campo editável focado do aplicativo atualmente controlado. */
     fun setFocusedText(value: String): Boolean {
         if (value.isBlank() || value.length > 2000) return false
         if (!getSharedPreferences("projeto_super_device", MODE_PRIVATE)
                 .getBoolean("app_control_authorized", false)) return false
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
-        val displayId = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
-            .getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.INVALID_DISPLAY)
-        if (displayId == android.view.Display.INVALID_DISPLAY ||
-            displayId == android.view.Display.DEFAULT_DISPLAY) return false
         val expectedPackage = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
             .getString("remote_target_package", null) ?: return false
-        val windows = getWindowsOnAllDisplays().get(displayId).orEmpty()
         val targetWindow = windows.firstOrNull { window ->
             if (!window.isFocused && !window.isActive) return@firstOrNull false
             val candidateRoot = window.root ?: return@firstOrNull false
@@ -312,8 +337,8 @@ class RemoteControlAccessibilityService : AccessibilityService() {
             } finally {
                 candidateRoot.recycle()
             }
-        }
-        val root = targetWindow?.root ?: return false
+        } ?: return false
+        val root = targetWindow.root ?: return false
         try {
             if (root.packageName?.toString() != expectedPackage) return false
             val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
@@ -343,5 +368,4 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         }
         return null
     }
-
 }
