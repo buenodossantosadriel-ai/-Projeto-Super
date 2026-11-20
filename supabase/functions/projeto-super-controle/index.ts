@@ -315,10 +315,27 @@ Deno.serve(async (req: Request) => {
       const device = await getDevice(String(body.device_id || ""));
       if (!device) return respond({ ok: false, error: "Chave do dispositivo inválida." }, 401);
       if (action === "device_poll") {
-        const { data: requests } = await admin.from("projeto_super_control_requests").select("id,action,created_at,expires_at")
+        const consumer = String(body.consumer || "");
+        const pendingQuery = admin.from("projeto_super_control_requests").select("id,action,created_at,expires_at")
           .eq("device_id", device.id).eq("status", "pending").gt("expires_at", new Date().toISOString())
-          .order("created_at", { ascending: true }).limit(10);
-        return respond({ ok: true, paired: device.status === "paired", requests: requests || [] });
+          .order("created_at", { ascending: true }).limit(consumer ? 1 : 10);
+        const { data: requests } = await pendingQuery;
+        // Clientes antigos continuam recebendo a lista completa. Clientes atualizados
+        // recebem apenas o primeiro comando e somente o consumidor responsável por ele.
+        if (consumer !== "activity" && consumer !== "accessibility") {
+          return respond({ ok: true, paired: device.status === "paired", requests: requests || [] });
+        }
+        const oldest = requests?.[0];
+        if (!oldest) return respond({ ok: true, paired: device.status === "paired", requests: [] });
+        const action = String(oldest.action || "");
+        const isAppCommand = action.startsWith("open_app:") || action.startsWith("tap:") ||
+          action.startsWith("type_text:") || action === "remote_back" || action === "remote_home";
+        const expectedConsumer = isAppCommand ? "accessibility" : "activity";
+        return respond({
+          ok: true,
+          paired: device.status === "paired",
+          requests: expectedConsumer === consumer ? [oldest] : [],
+        });
       }
       if (action === "device_sync_apps") {
         if (device.status !== "paired" || !device.owner_user_id) {
