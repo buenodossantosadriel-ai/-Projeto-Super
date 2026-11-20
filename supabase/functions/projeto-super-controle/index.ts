@@ -403,8 +403,12 @@ Deno.serve(async (req: Request) => {
       for (const device of rows) {
         const active = sessionsByDevice.get(device.id) || null;
         const installedApps = appsByDevice.get(device.id) || [];
+        const hasReceivedFrame = Boolean(active?.last_frame_at);
         const lastActivity = active?.last_frame_at || active?.started_at;
-        if (active && lastActivity && Date.now() - new Date(lastActivity).getTime() > 45000) {
+        // A primeira captura depende da confirmação do Android e do início do serviço.
+        // Concede 120 s para o primeiro JPEG; depois exige quadros recentes (45 s).
+        const inactivityLimit = hasReceivedFrame ? 45000 : 120000;
+        if (active && lastActivity && Date.now() - new Date(lastActivity).getTime() > inactivityLimit) {
           await admin.from("projeto_super_device_sessions").update({
             status: "stopped", stopped_at: new Date().toISOString(),
           }).eq("id", active.id).eq("status", "active");
@@ -445,9 +449,12 @@ Deno.serve(async (req: Request) => {
       const { data: activeSession } = await admin.from("projeto_super_device_sessions").select("id,session_type,last_frame_at,started_at")
         .eq("device_id", deviceId).eq("owner_user_id", owner.id).eq("status", "active").limit(1);
       let hasActiveSession = Boolean(activeSession?.length);
+      const activeHasReceivedFrame = Boolean(activeSession?.[0]?.last_frame_at);
       const activeLastActivity = activeSession?.[0]?.last_frame_at || activeSession?.[0]?.started_at;
+      // Não expira a sessão durante a confirmação do Android/inicialização da captura.
+      const activeInactivityLimit = activeHasReceivedFrame ? 45000 : 120000;
       if (hasActiveSession && activeLastActivity &&
-          Date.now() - new Date(activeLastActivity).getTime() > 45000) {
+          Date.now() - new Date(activeLastActivity).getTime() > activeInactivityLimit) {
         await admin.from("projeto_super_device_sessions").update({
           status: "stopped", stopped_at: new Date().toISOString(),
         }).eq("id", activeSession[0].id).eq("status", "active");
