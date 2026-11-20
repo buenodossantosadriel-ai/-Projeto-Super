@@ -64,7 +64,7 @@ class ScreenCaptureService : LifecycleService() {
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_view)
             .setContentTitle("Projeto Super — ambiente remoto")
-            .setContentText("Display virtual ativo por autorização do Android. Toque em Parar para encerrar.")
+            .setContentText("Display virtual independente ativo. Toque em Parar para encerrar.")
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .addAction(android.R.drawable.ic_media_pause, "Parar", stopPending)
