@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.Intent
 import android.graphics.Path
+import android.hardware.display.DisplayManager
 import android.os.Bundle
 import android.os.Build
 import android.view.accessibility.AccessibilityEvent
@@ -200,6 +201,8 @@ class RemoteControlAccessibilityService : AccessibilityService() {
             .getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.INVALID_DISPLAY)
         if (displayId == android.view.Display.INVALID_DISPLAY ||
             displayId == android.view.Display.DEFAULT_DISPLAY) return false
+        val targetDisplay = getSystemService(DisplayManager::class.java).getDisplay(displayId) ?: return false
+        if (targetDisplay.flags and android.view.Display.FLAG_PRIVATE != 0) return false
         val gesture = GestureDescription.Builder()
             .setDisplayId(displayId)
             .addStroke(GestureDescription.StrokeDescription(path, 0, 80))
@@ -211,7 +214,11 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
         val path = Path().apply { moveTo(x1, y1); lineTo(x2, y2) }
         val displayId = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
-            .getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.DEFAULT_DISPLAY)
+            .getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.INVALID_DISPLAY)
+        if (displayId == android.view.Display.INVALID_DISPLAY ||
+            displayId == android.view.Display.DEFAULT_DISPLAY) return false
+        val targetDisplay = getSystemService(DisplayManager::class.java).getDisplay(displayId) ?: return false
+        if (targetDisplay.flags and android.view.Display.FLAG_PRIVATE != 0) return false
         val gesture = GestureDescription.Builder()
             .setDisplayId(displayId)
             .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs.coerceIn(100, 1500)))
