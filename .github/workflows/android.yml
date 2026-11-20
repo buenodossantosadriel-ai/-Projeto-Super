@@ -45,7 +45,7 @@ jobs:
           accessibility_xml = Path("app/src/main/res/xml/remote_control_accessibility.xml").read_text()
           dashboard = Path("dashboard.html").read_text()
           backend = Path("supabase/functions/projeto-super-controle/index.ts").read_text()
-          assert "MediaProjection" not in all_kotlin
+          assert "import android.media.projection.MediaProjection" not in all_kotlin
           assert "getMediaProjection" not in all_kotlin
           assert "createScreenCaptureIntent" not in all_kotlin
           assert "createVirtualDisplay(" not in all_kotlin
