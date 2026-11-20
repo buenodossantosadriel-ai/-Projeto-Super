@@ -66,8 +66,8 @@ jobs:
           assert 'button("Gesto voltar (borda esquerda)"' in dashboard
           assert 'ControlApi.poll(this, "accessibility")' in control
           backend = Path("supabase/functions/projeto-super-controle/index.ts").read_text()
-          assert 'action.startsWith("swipe:")' in backend
           assert "const isSwipe =" in backend
+          assert 'requestedAction = String(body.control || "")' in backend
           assert "isRemoteNavigation || isTap || isSwipe || isTypeText" in backend
           assert "isVirtualDisplayCommand" in backend
           assert 'const allowedConsumers = ["activity", "accessibility", "screen", "audio", "camera"]' in backend
