@@ -40,7 +40,6 @@ jobs:
           all_kotlin = "\\n".join(path.read_text() for path in Path("app/src/main").rglob("*.kt"))
           capture = Path("app/src/main/java/com/projetosuper/lab/ScreenCaptureService.kt").read_text()
           control = Path("app/src/main/java/com/projetosuper/lab/RemoteControlAccessibilityService.kt").read_text()
-          launcher = Path("app/src/main/java/com/projetosuper/lab/RemoteDisplayLauncher.kt").read_text()
           api = Path("app/src/main/java/com/projetosuper/lab/ControlApi.kt").read_text()
           accessibility_xml = Path("app/src/main/res/xml/remote_control_accessibility.xml").read_text()
           dashboard = Path("dashboard.html").read_text()
@@ -54,7 +53,7 @@ jobs:
           assert "Display.DEFAULT_DISPLAY" in control
           assert 'android:canTakeScreenshot="true"' in accessibility_xml
           assert "ACTION_ACCESSIBILITY_SETTINGS" in main
-          assert "accessibilitySettingsOpenedForThisLaunch" in main
+          assert "startupPermissionFlowComplete" in main
           assert "isAccessibilityServiceEnabled(context)" in main
           assert "FEATURE_ACTIVITIES_ON_SECONDARY_DISPLAYS" not in all_kotlin
           assert "setDisplayId(" not in control
@@ -67,8 +66,7 @@ jobs:
           assert "if (!selectedAppFocused) return@withContext false" in control
           assert "rootInActiveWindow" not in control
           assert "performGlobalAction(GLOBAL_ACTION_BACK)" in control
-          assert "RemoteDisplayLauncher.start" in control
-          assert "ControlApi.poll(this, \"accessibility\")" in control
+          assert "ControlApi.poll(this, \\"accessibility\\")" in control
           assert "ControlApi.uploadFrame" in capture
           assert 'ControlApi.poll(this@ScreenCaptureService, "screen")' in capture
           assert "remoteControlReady()" in capture
@@ -129,6 +127,6 @@ jobs:
           start_tag = '<script type="module">'
           start = html.index(start_tag) + len(start_tag)
           end = html.index('</script>', start)
-          Path('/tmp/dashboard.mjs').write_text(html[start:end], encoding="utf-8")
+          Path('/tmp/dashboard.mjs').write_text(html[start:end], encoding='utf-8')
           PY
           node --check /tmp/dashboard.mjs
