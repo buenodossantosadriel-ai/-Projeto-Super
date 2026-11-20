@@ -209,7 +209,7 @@ class MainActivity : ComponentActivity() {
                             deviceStatus.value = if (devicePaired.value) {
                                 "Dispositivo vinculado. Com autorização geral ativa, o serviço de acessibilidade controla a tela principal do telefone; a transmissão JPEG é uma sessão separada."
                             } else {
-                                "Conectando automaticamente à conta administrativa..."
+                                "Telefone registrado. Aguardando aprovação no dashboard administrativo."
                             }
                             val requests = response.optJSONArray("requests")
                             if (pendingRequest.value == null && !busy.value && requests != null) {
