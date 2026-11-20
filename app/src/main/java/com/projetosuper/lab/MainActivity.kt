@@ -125,7 +125,7 @@ class MainActivity : ComponentActivity() {
                 deviceError.value = if (granted) {
                     "Notificações autorizadas. As funções de câmera e microfone continuam dependendo das permissões específicas do Android."
                 } else {
-                    "Notificações não autorizadas. A tela e a câmera ainda podem ser compartilhadas conforme as regras do Android; sessões de microfone exigem essa permissão."
+                    "Notificações não autorizadas. Isso não impede a captura de tela, a câmera ou o microfone; cada função depende da respectiva permissão do Android."
                 }
             }
             val notificationPermissionRequested = remember { mutableStateOf(false) }
@@ -360,7 +360,7 @@ class MainActivity : ComponentActivity() {
                             ) { Text("Abrir configurações de permissões") }
                             Text(
                                 if (accessibilityEnabled) "Acessibilidade ativada: os comandos remotos podem ser recebidos."
-                                else "Para abrir aplicativos e executar comandos remotos, ative manualmente o serviço Projeto Super nesta tela de configurações. Isso não é exigido apenas para enviar quadros JPEG.",
+                                else "Para abrir aplicativos, executar comandos remotos e enviar quadros JPEG da tela, ative manualmente o serviço Projeto Super nesta tela de configurações.",
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Text(
