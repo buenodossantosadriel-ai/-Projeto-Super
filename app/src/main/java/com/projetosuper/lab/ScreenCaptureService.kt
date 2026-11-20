@@ -111,11 +111,10 @@ class ScreenCaptureService : LifecycleService() {
                 processImage(image)
             }, Handler(imageThread!!.looper))
 
-            // SUPPORTS_TOUCH é um sinalizador de framework não exposto no SDK público.
-            // A disponibilidade real de gestos ainda precisa ser validada no aparelho.
-            val supportsTouchFlag = 1 shl 6
+            // Usa somente flags públicas. Os gestos são enviados pela API pública
+            // GestureDescription.Builder.setDisplayId (Android 11+).
             val flags = DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC or
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY or supportsTouchFlag
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY
             virtualDisplay = (getSystemService(Context.DISPLAY_SERVICE) as DisplayManager)
                 .createVirtualDisplay(
                     "ProjetoSuperRemoteDisplay", width, height, metrics.densityDpi,
