@@ -1,0 +1,4 @@
+[functions.projeto-super-controle]
+# The function validates device secrets and admin user JWTs inside its handler.
+# Native device requests intentionally do not send a user Authorization bearer token.
+verify_jwt = false
