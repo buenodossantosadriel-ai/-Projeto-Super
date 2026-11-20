@@ -263,7 +263,7 @@ class MainActivity : ComponentActivity() {
                             Text("Laboratório Android — controle transparente")
                             Text(
                                 "O controle remoto dos aplicativos identificados só funciona após autorização geral neste aparelho. " +
-                                    "Captura de tela, câmera e microfone continuam exigindo as permissões específicas do Android."
+                                    "A transmissão JPEG usa o display virtual independente. Câmera e microfone continuam exigindo suas permissões específicas do Android."
                             )
                         }
                         item {
