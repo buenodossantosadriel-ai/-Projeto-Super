@@ -7,6 +7,7 @@ import android.graphics.Path
 import android.hardware.display.DisplayManager
 import android.os.Bundle
 import android.os.Build
+import android.os.Handler
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import kotlinx.coroutines.CoroutineScope
@@ -17,6 +18,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import org.json.JSONObject
 
 /**
@@ -194,39 +197,50 @@ class RemoteControlAccessibilityService : AccessibilityService() {
 
     private fun packageNameOfSelf(): String = packageName
 
-    fun tap(x: Float, y: Float): Boolean {
+    private suspend fun dispatchGestureOnDisplay(displayId: Int, path: Path, durationMs: Long): Boolean =
+        withContext(Dispatchers.Main) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R ||
+                displayId == android.view.Display.INVALID_DISPLAY ||
+                displayId == android.view.Display.DEFAULT_DISPLAY) return@withContext false
+            val targetDisplay = getSystemService(DisplayManager::class.java).getDisplay(displayId)
+                ?: return@withContext false
+            if (targetDisplay.flags and android.view.Display.FLAG_PRIVATE != 0) return@withContext false
+            val gesture = GestureDescription.Builder()
+                .setDisplayId(displayId)
+                .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs.coerceIn(80, 1500)))
+                .build()
+            suspendCancellableCoroutine { continuation ->
+                val accepted = dispatchGesture(
+                    gesture,
+                    object : GestureResultCallback() {
+                        override fun onCompleted(gestureDescription: GestureDescription?) {
+                            if (continuation.isActive) continuation.resume(true)
+                        }
+                        override fun onCancelled(gestureDescription: GestureDescription?) {
+                            if (continuation.isActive) continuation.resume(false)
+                        }
+                    },
+                    Handler(mainLooper)
+                )
+                if (!accepted && continuation.isActive) continuation.resume(false)
+            }
+        }
+
+    suspend fun tap(x: Float, y: Float): Boolean {
+        val displayId = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
+            .getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.INVALID_DISPLAY)
         val path = Path().apply { moveTo(x, y) }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
-        val displayId = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
-            .getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.INVALID_DISPLAY)
-        if (displayId == android.view.Display.INVALID_DISPLAY ||
-            displayId == android.view.Display.DEFAULT_DISPLAY) return false
-        val targetDisplay = getSystemService(DisplayManager::class.java).getDisplay(displayId) ?: return false
-        if (targetDisplay.flags and android.view.Display.FLAG_PRIVATE != 0) return false
-        val gesture = GestureDescription.Builder()
-            .setDisplayId(displayId)
-            .addStroke(GestureDescription.StrokeDescription(path, 0, 80))
-            .build()
-        return dispatchGesture(gesture, null, null)
+        return dispatchGestureOnDisplay(displayId, path, 80)
     }
 
-    fun swipe(x1: Float, y1: Float, x2: Float, y2: Float, durationMs: Long): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+    suspend fun swipe(x1: Float, y1: Float, x2: Float, y2: Float, durationMs: Long): Boolean {
+        val displayId = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
+            .getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.INVALID_DISPLAY)
         val path = Path().apply { moveTo(x1, y1); lineTo(x2, y2) }
-        val displayId = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
-            .getInt(RemoteDisplayLauncher.PREF_DISPLAY_ID, android.view.Display.INVALID_DISPLAY)
-        if (displayId == android.view.Display.INVALID_DISPLAY ||
-            displayId == android.view.Display.DEFAULT_DISPLAY) return false
-        val targetDisplay = getSystemService(DisplayManager::class.java).getDisplay(displayId) ?: return false
-        if (targetDisplay.flags and android.view.Display.FLAG_PRIVATE != 0) return false
-        val gesture = GestureDescription.Builder()
-            .setDisplayId(displayId)
-            .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs.coerceIn(100, 1500)))
-            .build()
-        return dispatchGesture(gesture, null, null)
+        return dispatchGestureOnDisplay(displayId, path, durationMs)
     }
 
-    private fun goBackOnVirtualDisplay(): Boolean {
+    private suspend fun goBackOnVirtualDisplay(): Boolean {
         val prefs = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
         val width = prefs.getInt(RemoteDisplayLauncher.PREF_DISPLAY_WIDTH, 0)
         val height = prefs.getInt(RemoteDisplayLauncher.PREF_DISPLAY_HEIGHT, 0)
@@ -234,7 +248,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         return swipe(2f, height * 0.5f, width * 0.65f, height * 0.5f, 320)
     }
 
-    fun swipeNormalized(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long): Boolean {
+    suspend fun swipeNormalized(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long): Boolean {
         val prefs = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
         val width = prefs.getInt(RemoteDisplayLauncher.PREF_DISPLAY_WIDTH, 0)
         val height = prefs.getInt(RemoteDisplayLauncher.PREF_DISPLAY_HEIGHT, 0)
@@ -248,7 +262,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         )
     }
 
-    fun tapNormalized(x: Int, y: Int): Boolean {
+    suspend fun tapNormalized(x: Int, y: Int): Boolean {
         val prefs = getSharedPreferences("projeto_super_device", MODE_PRIVATE)
         val width = prefs.getInt(RemoteDisplayLauncher.PREF_DISPLAY_WIDTH, 0)
         val height = prefs.getInt(RemoteDisplayLauncher.PREF_DISPLAY_HEIGHT, 0)
