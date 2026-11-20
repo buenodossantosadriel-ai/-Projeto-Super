@@ -15,6 +15,7 @@ import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.view.Display
 import android.os.Handler
 import android.os.HandlerThread
 import androidx.core.app.NotificationCompat
