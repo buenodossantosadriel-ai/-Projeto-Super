@@ -54,6 +54,8 @@ jobs:
           assert "suspendCancellableCoroutine" in control
           assert "onCompleted" in control and "onCancelled" in control
           assert "remote_target_package" in control
+          assert "selectedAppFocused" in control
+          assert "if (!selectedAppFocused) return@withContext false" in control
           assert "rootInActiveWindow" not in control
           dashboard = Path("dashboard.html").read_text()
           assert 'button("Gesto voltar (borda esquerda)"' in dashboard
