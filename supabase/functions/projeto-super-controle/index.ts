@@ -240,7 +240,7 @@ Deno.serve(async (req: Request) => {
         if (!oldest) return respond({ ok: true, paired: device.status === "paired", requests: [] });
         const action = String(oldest.action || "");
         const isAppCommand = action.startsWith("open_app:") || action.startsWith("tap:") ||
-          action.startsWith("type_text:") || action === "remote_back" || action === "remote_home";
+          action.startsWith("type_text:") || action.startsWith("swipe:") || action === "remote_back";
         const expectedConsumer = isAppCommand ? "accessibility" : "activity";
         return respond({
           ok: true,
@@ -311,7 +311,8 @@ Deno.serve(async (req: Request) => {
           }
           return respond({ ok: true, decision, opened_app_package: packageName });
         }
-        if (request.action === "remote_back" || request.action === "remote_home" ||
+        if (request.action === "remote_back" ||
+            /^swipe:(?:[0-9]|[1-9][0-9]{1,2}|1000):(?:[0-9]|[1-9][0-9]{1,2}|1000):(?:[0-9]|[1-9][0-9]{1,2}|1000):(?:[0-9]|[1-9][0-9]{1,2}|1000):[0-9]{1,4}$/.test(request.action) ||
             /^tap:(?:[0-9]|[1-9][0-9]{1,2}|1000):(?:[0-9]|[1-9][0-9]{1,2}|1000)$/.test(request.action) ||
             (request.action.startsWith("type_text:") &&
               request.action.length > "type_text:".length &&
@@ -428,13 +429,14 @@ Deno.serve(async (req: Request) => {
       const isOpenApp = requestedAction.startsWith("open_app:");
       const appPackage = isOpenApp ? requestedAction.slice("open_app:".length) : "";
       const validPackage = /^[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)+$/.test(appPackage) && appPackage.length <= 180;
-      const isRemoteNavigation = requestedAction === "remote_back" || requestedAction === "remote_home";
+      const isRemoteNavigation = requestedAction === "remote_back";
       const isTap = /^tap:(?:[0-9]|[1-9][0-9]{1,2}|1000):(?:[0-9]|[1-9][0-9]{1,2}|1000)$/.test(requestedAction);
+      const isSwipe = /^swipe:(?:[0-9]|[1-9][0-9]{1,2}|1000):(?:[0-9]|[1-9][0-9]{1,2}|1000):(?:[0-9]|[1-9][0-9]{1,2}|1000):(?:[0-9]|[1-9][0-9]{1,2}|1000):[0-9]{1,4}$/.test(requestedAction);
       const isTypeText = requestedAction.startsWith("type_text:") &&
         requestedAction.length > "type_text:".length &&
         requestedAction.length <= "type_text:".length + 2000;
       if (!["camera_front", "camera_back", "screen_share", "microphone_live", "microphone_record", "stop_session"].includes(requestedAction) &&
-          !(isOpenApp && validPackage) && !isRemoteNavigation && !isTap && !isTypeText) {
+          !(isOpenApp && validPackage) && !isRemoteNavigation && !isTap && !isSwipe && !isTypeText) {
         return respond({ ok: false, error: "Controle inválido ou pacote de aplicativo inválido." }, 400);
       }
       const { data: device } = await admin.from("projeto_super_devices").select("id,last_seen_at")
@@ -462,7 +464,7 @@ Deno.serve(async (req: Request) => {
         await clearAudioChunks(admin, [activeSession[0].id], "live");
         hasActiveSession = false;
       }
-      if (isTap && (!hasActiveSession || activeSession?.[0]?.session_type !== "screen_share")) {
+      if ((isTap || isSwipe) && (!hasActiveSession || activeSession?.[0]?.session_type !== "screen_share")) {
         return respond({ ok: false, error: "Toques remotos exigem uma sessão ativa de compartilhamento da tela." }, 409);
       }
       if (requestedAction === "stop_session" && !hasActiveSession) {
@@ -471,7 +473,7 @@ Deno.serve(async (req: Request) => {
       // Controle de aplicativos é independente de transmissão de tela.
       // O dispositivo ainda precisa estar vinculado, com autorização geral ativa
       // e AccessibilityService habilitado pelo próprio usuário no Android.
-      const isRemoteCommand = isRemoteNavigation || isTap || isTypeText || (isOpenApp && validPackage);
+      const isRemoteCommand = isRemoteNavigation || isTap || isSwipe || isTypeText || (isOpenApp && validPackage);
       if (requestedAction !== "stop_session" && hasActiveSession && !isRemoteCommand) {
         return respond({ ok: false, error: "Encerre a sessão atual antes de iniciar outra." }, 409);
       }
