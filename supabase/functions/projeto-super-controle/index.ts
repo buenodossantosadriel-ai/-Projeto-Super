@@ -117,8 +117,10 @@ Deno.serve(async (req: Request) => {
         const { data: audioSession } = await admin.from("projeto_super_device_sessions")
           .select("id,status,owner_user_id,session_type").eq("id", sessionId).eq("device_id", deviceId).maybeSingle();
         if (!audioSession || audioSession.status !== "active" || audioSession.owner_user_id !== device.owner_user_id ||
+            (audioSession.session_type === "microphone_live" && mode !== "live") ||
+            (audioSession.session_type === "microphone_record" && mode !== "recording") ||
             !["microphone_live", "microphone_record"].includes(audioSession.session_type)) {
-          return respond({ ok: false, error: "Sessão de áudio não está ativa." }, 409);
+          return respond({ ok: false, error: "Sessão de áudio não está ativa ou o modo do trecho não corresponde à sessão." }, 409);
         }
         const path = "audio/" + deviceId + "/" + sessionId + "/" + mode + "/" + String(chunkIndex).padStart(8, "0") + ".wav";
         const bytes = new Uint8Array(await audioFile.arrayBuffer());
@@ -156,11 +158,14 @@ Deno.serve(async (req: Request) => {
       const file = form.get("frame");
       if (!device || device.status !== "paired" || !device.owner_user_id) return respond({ ok: false, error: "Dispositivo não autenticado ou não pareado." }, 401);
       if (!(file instanceof File) || file.size < 1 || file.size > MAX_FRAME_BYTES) return respond({ ok: false, error: "Quadro inválido ou acima de 2 MB." }, 413);
-      if (!["image/jpeg", "image/png"].includes(file.type)) return respond({ ok: false, error: "Somente JPEG ou PNG." }, 415);
-      const { data: session } = await admin.from("projeto_super_device_sessions").select("id,status,owner_user_id")
+      if (file.type !== "image/jpeg") return respond({ ok: false, error: "Somente quadros JPEG são permitidos." }, 415);
+      const { data: session } = await admin.from("projeto_super_device_sessions").select("id,status,owner_user_id,session_type")
         .eq("id", sessionId).eq("device_id", deviceId).maybeSingle();
-      if (!session || session.status !== "active" || session.owner_user_id !== device.owner_user_id) return respond({ ok: false, error: "Sessão não está ativa." }, 409);
-      const ext = file.type === "image/png" ? "png" : "jpg";
+      if (!session || session.status !== "active" || session.owner_user_id !== device.owner_user_id ||
+          !["screen_share", "camera_front", "camera_back"].includes(session.session_type)) {
+        return respond({ ok: false, error: "Sessão JPEG de tela ou câmera não está ativa." }, 409);
+      }
+      const ext = "jpg";
       const path = "live/" + deviceId + "/" + sessionId + "/" + Date.now() + "-" + randomHex(5) + "." + ext;
       const bytes = new Uint8Array(await file.arrayBuffer());
       const { error: uploadError } = await admin.storage.from(BUCKET).upload(path, bytes, {
@@ -492,9 +497,8 @@ Deno.serve(async (req: Request) => {
       if (requestedAction === "stop_session" && !hasActiveSession) {
         return respond({ ok: false, error: "Não há sessão ativa para encerrar." }, 409);
       }
-      // Controle de aplicativos é independente de transmissão de tela.
-      // O dispositivo ainda precisa estar vinculado, com autorização geral ativa
-      // e AccessibilityService habilitado pelo próprio usuário no Android.
+      // Os comandos de aplicativos só podem ser executados dentro de uma sessão JPEG
+      // ativa do display virtual. A Acessibilidade é verificada no próprio Android.
       const isRemoteCommand = isRemoteNavigation || isTap || isSwipe || isTypeText || (isOpenApp && validPackage);
       if (requestedAction !== "stop_session" && hasActiveSession && !isRemoteCommand) {
         return respond({ ok: false, error: "Encerre a sessão atual antes de iniciar outra." }, 409);
