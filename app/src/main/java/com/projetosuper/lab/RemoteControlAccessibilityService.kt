@@ -145,7 +145,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                 else -> error("Comando remoto não reconhecido.")
             }
             ControlApi.decide(this, requestId, true)
-            true
+            return true
         } catch (error: Exception) {
             try { ControlApi.decide(this, requestId, false) } catch (_: Exception) {}
             android.util.Log.e("ProjetoSuperRemote", "Comando remoto recusado: ${error.message}", error)
@@ -156,7 +156,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
     private suspend fun waitForPackageOnDisplay(packageName: String, displayId: Int): Boolean {
         repeat(20) {
             val found = withContext(Dispatchers.Main) {
-                val windows = getWindowsOnAllDisplays()[displayId].orEmpty()
+                val windows = getWindowsOnAllDisplays().filter { it.displayId == displayId }
                 windows.any { window ->
                     val root = window.root
                     try { root?.packageName?.toString() == packageName }
