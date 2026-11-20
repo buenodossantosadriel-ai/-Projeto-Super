@@ -455,6 +455,9 @@ Deno.serve(async (req: Request) => {
         await clearAudioChunks(admin, [activeSession[0].id], "live");
         hasActiveSession = false;
       }
+      if (isTap && (!hasActiveSession || activeSession?.[0]?.session_type !== "screen_share")) {
+        return respond({ ok: false, error: "Toques remotos exigem uma sessão ativa de compartilhamento da tela." }, 409);
+      }
       if (requestedAction === "stop_session" && !hasActiveSession) {
         return respond({ ok: false, error: "Não há sessão ativa para encerrar." }, 409);
       }
