@@ -190,9 +190,25 @@ class MainActivity : ComponentActivity() {
                                 for (i in 0 until requests.length()) {
                                     val candidate = requests.getJSONObject(i)
                                     val requestedAction = candidate.optString("action")
+                                    if (!appControlAuthorized.value) {
+                                        deviceError.value = "Solicitação recusada: a autorização geral do Projeto Super não está ativa."
+                                        try { ControlApi.decide(context, candidate.optString("id"), false) }
+                                        catch (error: Exception) { deviceError.value = error.message ?: "Não foi possível recusar a solicitação sem autorização." }
+                                        continue
+                                    }
                                     if (requestedAction == "screen_share") {
-                                        if (!appControlAuthorized.value) {
-                                            deviceError.value = "Aguardando a autorização geral inicial."
+                                        val displaySupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                                            context.packageManager.hasSystemFeature(PackageManager.FEATURE_ACTIVITIES_ON_SECONDARY_DISPLAYS)
+                                        if (!displaySupported) {
+                                            deviceError.value = "Sessão recusada: este aparelho não oferece os requisitos de display secundário do Projeto Super."
+                                            try { ControlApi.decide(context, candidate.optString("id"), false) }
+                                            catch (error: Exception) { deviceError.value = error.message ?: "Não foi possível recusar a sessão incompatível." }
+                                            continue
+                                        }
+                                        if (!isAccessibilityServiceEnabled(context)) {
+                                            deviceError.value = "Sessão recusada: ative primeiro o serviço de Acessibilidade nas configurações do Android."
+                                            try { ControlApi.decide(context, candidate.optString("id"), false) }
+                                            catch (error: Exception) { deviceError.value = error.message ?: "Não foi possível recusar a sessão sem Acessibilidade." }
                                             continue
                                         }
                                         if (!busy.value) {
@@ -370,9 +386,22 @@ class MainActivity : ComponentActivity() {
                                 onClick = {
                                     appControlAuthorized.value = false
                                     context.getSharedPreferences("projeto_super_device", Context.MODE_PRIVATE)
-                                        .edit().putBoolean("app_control_authorized", false).apply()
+                                        .edit()
+                                        .putBoolean("app_control_authorized", false)
+                                        .remove("remote_target_package")
+                                        .apply()
                                     appsSynced.value = false
-                                    deviceError.value = "Autorização geral revogada. Novos comandos de aplicativos serão bloqueados."
+                                    pendingRequest.value?.let { pending ->
+                                        scope.launch {
+                                            try { ControlApi.decide(context, pending.optString("id"), false) }
+                                            catch (error: Exception) { deviceError.value = error.message ?: "Falha ao recusar a solicitação pendente." }
+                                        }
+                                    }
+                                    pendingRequest.value = null
+                                    context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
+                                    context.startService(Intent(context, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP))
+                                    context.startService(Intent(context, CameraCaptureService::class.java).setAction(CameraCaptureService.ACTION_STOP))
+                                    deviceError.value = "Autorização geral revogada. Sessões locais encerradas e novos comandos bloqueados."
                                 },
                                 enabled = appControlAuthorized.value,
                                 modifier = Modifier.fillMaxWidth()
