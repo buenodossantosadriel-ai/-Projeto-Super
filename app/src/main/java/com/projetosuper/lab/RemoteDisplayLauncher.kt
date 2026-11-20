@@ -35,8 +35,8 @@ object RemoteDisplayLauncher {
         check(display.flags and android.view.Display.FLAG_PRIVATE == 0) {
             "O display virtual está privado e não aceita aplicativos de terceiros."
         }
-        check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            "A validação de abertura em display secundário exige Android 10 ou superior."
+        check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            "O controle remoto isolado exige Android 11 ou superior: versões anteriores não permitem direcionar gestos e validar janelas no display secundário."
         }
         val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         check(activityManager.isActivityStartAllowedOnDisplay(context, displayId, intent)) {
