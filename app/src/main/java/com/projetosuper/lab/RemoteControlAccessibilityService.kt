@@ -107,14 +107,14 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
                     withContext(Dispatchers.Main) { startActivity(launch) }
                     check(waitForPackage(packageName)) {
-                        "O Android não confirmou a abertura do aplicativo no display remoto."
+                        "O Android não confirmou a abertura do aplicativo na tela do telefone."
                     }
                 }
                 action.startsWith("type_text:") -> {
                     val value = action.substringAfter("type_text:")
                     check(value.isNotBlank() && value.length <= 2000) { "Texto inválido." }
                     val inserted = withContext(Dispatchers.Main) { setFocusedText(value) }
-                    check(inserted) { "Não foi encontrado um campo de texto focado no aplicativo remoto." }
+                    check(inserted) { "Não foi encontrado um campo de texto focado no aplicativo aberto no telefone." }
                 }
                 action.startsWith("tap:") -> {
                     val parts = action.split(":")
@@ -123,7 +123,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
                     val y = parts[2].toIntOrNull() ?: error("Coordenada Y inválida.")
                     check(x in 0..1000 && y in 0..1000) { "Toque fora dos limites." }
                     check(tapNormalizedAndWait(x, y)) {
-                        "O Android não concluiu o toque no display remoto."
+                        "O Android não concluiu o toque na tela do telefone."
                     }
                 }
                 action == "remote_home" -> {
