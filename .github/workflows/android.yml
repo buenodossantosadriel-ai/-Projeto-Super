@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: projeto-super-android-${{ github.sha }}
+  group: projeto-super-android-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
