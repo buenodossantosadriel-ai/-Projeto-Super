@@ -185,7 +185,7 @@ class ScreenCaptureService : LifecycleService() {
         lifecycleScope.launch(Dispatchers.IO) {
             while (isActive && !shuttingDown) {
                 try {
-                    val response = ControlApi.poll(this@ScreenCaptureService)
+                    val response = ControlApi.poll(this@ScreenCaptureService, "screen")
                     val requests = response.optJSONArray("requests")
                     if (requests != null) {
                         for (i in 0 until requests.length()) {
