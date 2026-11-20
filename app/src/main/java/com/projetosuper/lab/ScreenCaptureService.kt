@@ -21,8 +21,13 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -44,7 +49,7 @@ class ScreenCaptureService : LifecycleService() {
     private var imageThread: HandlerThread? = null
     private var lastFrameAt = 0L
     private val uploading = AtomicBoolean(false)
-    private var shuttingDown = false
+    @Volatile private var shuttingDown = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
@@ -70,12 +75,7 @@ class ScreenCaptureService : LifecycleService() {
             intent?.getParcelableExtra(EXTRA_RESULT_DATA)
         }
         if (sessionId.isBlank() || resultData == null || resultCode == 0) {
-            if (sessionId.isNotBlank()) {
-                lifecycleScope.launch(Dispatchers.IO) {
-                    try { ControlApi.stopSession(this@ScreenCaptureService, sessionId) } catch (_: Exception) {}
-                }
-            }
-            stopSelf()
+            if (sessionId.isNotBlank()) stopCapture() else stopSelf()
             return START_NOT_STICKY
         }
         createNotificationChannel()
@@ -94,6 +94,7 @@ class ScreenCaptureService : LifecycleService() {
         val type = if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION else 0
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type)
         startProjection(resultCode, resultData)
+        startStopCommandWatcher()
         return START_NOT_STICKY
     }
 
@@ -134,6 +135,10 @@ class ScreenCaptureService : LifecycleService() {
     }
 
     private fun processImage(image: Image) {
+        if (shuttingDown) {
+            image.close()
+            return
+        }
         val now = android.os.SystemClock.elapsedRealtime()
         if (now - lastFrameAt < 300 || !uploading.compareAndSet(false, true)) {
             image.close()
@@ -155,8 +160,15 @@ class ScreenCaptureService : LifecycleService() {
                 )
             } catch (error: Exception) {
                 android.util.Log.w("ProjetoSuperScreen", "Quadro não enviado: ${error.message}", error)
+                val reason = error.message.orEmpty()
+                if (reason.contains("Dispositivo não autenticado") ||
+                    reason.contains("Chave do dispositivo inválida") ||
+                    reason.contains("Sessão não está ativa")) {
+                    stopCapture(remoteAlreadyStopped = true)
+                }
+            } finally {
+                uploading.set(false)
             }
-            finally { uploading.set(false) }
         }
     }
 
@@ -183,24 +195,56 @@ class ScreenCaptureService : LifecycleService() {
         return out.toByteArray()
     }
 
+    private fun startStopCommandWatcher() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            while (isActive && !shuttingDown) {
+                try {
+                    val response = ControlApi.poll(this@ScreenCaptureService)
+                    val requests = response.optJSONArray("requests")
+                    if (requests != null) {
+                        for (index in 0 until requests.length()) {
+                            val request = requests.optJSONObject(index) ?: continue
+                            if (request.optString("action") == "stop_session") {
+                                ControlApi.decide(this@ScreenCaptureService, request.optString("id"), true)
+                                stopCapture(remoteAlreadyStopped = true)
+                                return@launch
+                            }
+                        }
+                    }
+                } catch (error: Exception) {
+                    val reason = error.message.orEmpty()
+                    if (reason.contains("Chave do dispositivo inválida") ||
+                        reason.contains("Dispositivo não autenticado")) {
+                        stopCapture(remoteAlreadyStopped = true)
+                        return@launch
+                    }
+                    android.util.Log.w("ProjetoSuperScreen", "Falha ao verificar encerramento remoto: ${error.message}")
+                }
+                delay(3000)
+            }
+        }
+    }
+
     private fun stopCapture(remoteAlreadyStopped: Boolean = false) {
         if (shuttingDown) return
         shuttingDown = true
-        virtualDisplay?.release()
-        virtualDisplay = null
-        imageReader?.close()
-        imageReader = null
-        projection?.stop()
-        projection = null
-        imageThread?.quitSafely()
-        imageThread = null
-        if (!remoteAlreadyStopped && sessionId.isNotBlank()) {
-            lifecycleScope.launch(Dispatchers.IO) {
-                try { ControlApi.stopSession(this@ScreenCaptureService, sessionId) } catch (_: Exception) {}
+        lifecycleScope.launch(Dispatchers.Main) {
+            virtualDisplay?.release()
+            virtualDisplay = null
+            imageReader?.close()
+            imageReader = null
+            projection?.stop()
+            projection = null
+            imageThread?.quitSafely()
+            imageThread = null
+            if (!remoteAlreadyStopped && sessionId.isNotBlank()) {
+                withContext(Dispatchers.IO) {
+                    try { ControlApi.stopSession(this@ScreenCaptureService, sessionId) } catch (_: Exception) {}
+                }
             }
+            ServiceCompat.stopForeground(this@ScreenCaptureService, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopSelf()
         }
-        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-        stopSelf()
     }
 
     private fun createNotificationChannel() {
