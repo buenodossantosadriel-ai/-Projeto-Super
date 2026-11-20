@@ -156,7 +156,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
     private suspend fun waitForPackageOnDisplay(packageName: String, displayId: Int): Boolean {
         repeat(20) {
             val found = withContext(Dispatchers.Main) {
-                val windows = getWindowsOnAllDisplays().filter { it.displayId == displayId }
+                val windows = getWindowsOnAllDisplays()[displayId].orEmpty()
                 windows.any { window ->
                     val root = window.root
                     try { root?.packageName?.toString() == packageName }
