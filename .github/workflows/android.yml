@@ -43,7 +43,7 @@ jobs:
           APK=app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           sha256sum "$APK" | tee app/build/outputs/apk/debug/SHA256SUMS.txt
-          printf 'Projeto: Projeto Super original\\nBranch: android-native\\nCommit: %s\\nPackage: com.projetosuper.lab\\nBuild: debug para teste; assinatura pode não corresponder ao APK instalado\\n' "$GITHUB_SHA" > app/build/outputs/apk/debug/IDENTIFICACAO.txt
+          printf 'Projeto: Projeto Super original\\nBranch: android-native\\nCommit: %s\\nPackage: com.projetosuper.lab\\nVersão: 0.2.0 (2)\\nBuild: debug para teste; assinatura pode não corresponder ao APK instalado\\n' "$GITHUB_SHA" > app/build/outputs/apk/debug/IDENTIFICACAO.txt
 
       - name: Publicar APK e identificação
         uses: actions/upload-artifact@v4
