@@ -134,9 +134,8 @@ class MainActivity : ComponentActivity() {
                 ActivityResultContracts.PickVisualMedia()
             ) { uri -> selectedMedia.value = uri }
 
-            LaunchedEffect(deviceId.value) {
-                // Primeiro registra e conecta o telefone; só depois inicia a sequência de permissões.
-                if (deviceId.value == null || startupPermissionFlowStarted.value) return@LaunchedEffect
+            LaunchedEffect(Unit) {
+                if (startupPermissionFlowStarted.value) return@LaunchedEffect
                 startupPermissionFlowStarted.value = true
                 val startupPermissions = buildList {
                     add(Manifest.permission.CAMERA)
@@ -172,7 +171,7 @@ class MainActivity : ComponentActivity() {
                 try {
                     val credentials = ControlApi.ensureRegistered(context)
                     deviceId.value = credentials.deviceId
-                    deviceStatus.value = "Dispositivo conectado e vinculado automaticamente à conta administrativa."
+                    deviceStatus.value = "Dispositivo registrado. Aguardando aprovação no dashboard administrativo."
                 } catch (error: Exception) {
                     deviceError.value = error.message ?: "Falha ao registrar o dispositivo."
                     deviceStatus.value = "Não foi possível conectar ao servidor."
@@ -199,7 +198,7 @@ class MainActivity : ComponentActivity() {
                             }
                             deviceStatus.value = when {
                                 !devicePaired.value ->
-                                    "Telefone conectado e vinculado automaticamente à conta administrativa."
+                                    "Telefone registrado. Aguardando aprovação no dashboard administrativo."
                                 !appControlAuthorized.value ->
                                     "Telefone vinculado. Aguardando sua autorização geral para liberar os comandos remotos."
                                 Build.VERSION.SDK_INT < Build.VERSION_CODES.R ->
@@ -307,8 +306,8 @@ class MainActivity : ComponentActivity() {
                             Text("Vincular ao endpoint", style = MaterialTheme.typography.titleLarge)
                             Text(deviceStatus.value)
                             Text(
-                                if (devicePaired.value) "Este aparelho está conectado e vinculado à conta administrativa."
-                                else "Conectando o telefone à conta administrativa..."
+                                if (devicePaired.value) "Este aparelho está vinculado à conta administrativa."
+                                else "Aguardando aprovação deste telefone no dashboard administrativo."
                             )
                             Button(
                                 onClick = {
