@@ -63,31 +63,6 @@ class MainActivity : ComponentActivity() {
             .sortedBy { it.label.lowercase() }
     }
 
-    private fun createAppLaunchIntent(packageName: String): Intent? {
-        val launcherIntent = Intent(Intent.ACTION_MAIN)
-            .addCategory(Intent.CATEGORY_LAUNCHER)
-            .setPackage(packageName)
-        val launcherActivity = packageManager
-            .queryIntentActivities(launcherIntent, PackageManager.MATCH_ALL)
-            .firstOrNull()
-            ?.activityInfo
-
-        if (launcherActivity != null) {
-            return Intent(Intent.ACTION_MAIN)
-                .addCategory(Intent.CATEGORY_LAUNCHER)
-                .setClassName(launcherActivity.packageName, launcherActivity.name)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-        }
-
-        return packageManager.getLaunchIntentForPackage(packageName)
-            ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-    }
-
-    private fun openApp(packageName: String) {
-        val launchIntent = createAppLaunchIntent(packageName) ?: return
-        startActivity(launchIntent)
-    }
-
     private suspend fun runAuthorizedAppCommand(context: Context, request: JSONObject) {
         val service = RemoteControlAccessibilityService.activeInstance
             ?: error("Ative a acessibilidade do Projeto Super nas configurações do Android.")
@@ -416,7 +391,6 @@ class MainActivity : ComponentActivity() {
                                         Text(app.label, style = MaterialTheme.typography.bodyLarge)
                                         Text(app.packageName, style = MaterialTheme.typography.bodySmall)
                                     }
-                                    TextButton(onClick = { openApp(app.packageName) }) { Text("Abrir") }
                                 }
                             }
                         }
