@@ -189,18 +189,6 @@ class MainActivity : ComponentActivity() {
                                 var selected: JSONObject? = null
                                 for (i in 0 until requests.length()) {
                                     val candidate = requests.getJSONObject(i)
-                                    if (candidate.optString("action") == "stop_session") {
-                                        // Encerrar uma sessão é sempre permitido e não inicia nova captura.
-                                        try {
-                                            ControlApi.decide(context, candidate.optString("id"), true)
-                                            context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
-                                            context.startService(Intent(context, AudioCaptureService::class.java).setAction(AudioCaptureService.ACTION_STOP))
-                                    context.startService(Intent(context, CameraCaptureService::class.java).setAction(CameraCaptureService.ACTION_STOP))
-                                        } catch (error: Exception) {
-                                            deviceError.value = error.message ?: "Não foi possível encerrar a sessão."
-                                        }
-                                        break
-                                    }
                                     val requestedAction = candidate.optString("action")
                                     if (requestedAction == "screen_share") {
                                         if (!appControlAuthorized.value) {
