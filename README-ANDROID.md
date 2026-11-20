@@ -14,10 +14,11 @@ Este repositório contém o APK Android original do Projeto Super e o dashboard 
 
 ## Autorizações e privacidade
 
-- A autorização geral de controle remoto é solicitada pelo próprio Projeto Super e pode ser revogada no aplicativo.
-- O serviço de Acessibilidade precisa ser habilitado manualmente pelo usuário nas configurações do Android; o APK não pode ativá-lo por conta própria.
-- A autorização geral não substitui permissões específicas do Android: câmera, microfone e notificações são solicitados quando necessários.
-- A captura JPEG do display virtual não usa a autorização de captura de tela do MediaProjection.
+- A autorização geral interna é apresentada na primeira abertura enquanto ainda não foi concedida; o usuário pode sair sem autorizar e a solicitação reaparece na próxima abertura.
+- Revogar a autorização geral bloqueia novas solicitações e encerra as sessões locais de tela, câmera e microfone.
+- O serviço de Acessibilidade precisa ser habilitado manualmente pelo usuário nas configurações do Android; o APK não pode ativá-lo por conta própria. O Projeto Super só inicia a sessão visual de controle depois de confirmar que esse serviço está ativo.
+- A autorização geral não substitui permissões específicas do Android: câmera, microfone e notificações são solicitados quando necessários. Câmera e microfone também exigem confirmação da sessão no telefone.
+- A captura de tela é exclusivamente JPEG, usando o display virtual; não usa MediaProjection, WebRTC nem captura da tela física.
 - Comandos e sessões são validados pelo endpoint; a chave secreta do Supabase permanece no servidor. A chave do dispositivo é protegida localmente pelo Android Keystore.
 
 ## Limitações reais do Android
