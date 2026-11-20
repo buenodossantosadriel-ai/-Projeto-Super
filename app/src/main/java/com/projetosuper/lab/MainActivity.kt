@@ -307,8 +307,8 @@ class MainActivity : ComponentActivity() {
                             PermissionRow("Notificações", notificationsGranted)
                             PermissionRow("Acessibilidade para controle remoto", accessibilityEnabled)
                             Text(
-                                "O controle de toques e navegação só funciona depois de ativar este serviço manualmente. " +
-                                    "Ele não lê o conteúdo da tela; executa apenas gestos e comandos globais solicitados.",
+                                "O controle remoto exige ativar este serviço nas configurações do Android. " +
+                                    "Os gestos são enviados ao display virtual; ações globais que afetariam a tela física são bloqueadas.",
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Button(
@@ -378,7 +378,7 @@ class MainActivity : ComponentActivity() {
                                 enabled = appControlAuthorized.value,
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Revogar autorização geral") }
-                            Text("A autorização vale para todos os aplicativos identificados com atividade de inicialização. Acessibilidade precisa ser ativada manualmente no Android para toques e navegação. Esta autorização não libera captura de tela, câmera ou microfone.")
+                            Text("A autorização vale para todos os aplicativos identificados. A acessibilidade ainda precisa ser ativada manualmente no Android; captura de tela, câmera e microfone continuam sujeitos às confirmações nativas obrigatórias.")
                         }
                         item {
                             Text("Aplicativos disponíveis", style = MaterialTheme.typography.titleLarge)
