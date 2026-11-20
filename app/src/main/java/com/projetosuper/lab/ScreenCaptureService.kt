@@ -22,8 +22,6 @@ import androidx.core.app.ServiceCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
@@ -35,6 +33,8 @@ class ScreenCaptureService : LifecycleService() {
         const val EXTRA_SESSION_ID = "session_id"
         const val EXTRA_RESULT_CODE = "projection_result_code"
         const val EXTRA_RESULT_DATA = "projection_result_data"
+        @Volatile var remoteDisplayId: Int? = null
+            private set
         private const val CHANNEL_ID = "projeto_super_screen"
         private const val NOTIFICATION_ID = 4102
     }
@@ -82,7 +82,6 @@ class ScreenCaptureService : LifecycleService() {
         val type = if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION else 0
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type)
         startProjection(resultCode, resultData)
-        startStopCommandWatcher()
         return START_NOT_STICKY
     }
 
@@ -105,9 +104,14 @@ class ScreenCaptureService : LifecycleService() {
             }, Handler(mainLooper))
             virtualDisplay = projection?.createVirtualDisplay(
                 "ProjetoSuperScreen", width, height, metrics.densityDpi,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC or
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY,
                 imageReader?.surface, null, null
             )
+            remoteDisplayId = virtualDisplay?.display?.displayId
+            check(remoteDisplayId != null && remoteDisplayId != Display.DEFAULT_DISPLAY) {
+                "O Android não criou um display virtual independente."
+            }
         } catch (error: Exception) {
             android.util.Log.e("ProjetoSuperScreen", "Falha ao iniciar compartilhamento", error)
             stopCapture()
@@ -154,38 +158,12 @@ class ScreenCaptureService : LifecycleService() {
         return out.toByteArray()
     }
 
-    private fun startStopCommandWatcher() {
-        lifecycleScope.launch(Dispatchers.IO) {
-            while (isActive && !shuttingDown) {
-                try {
-                    val response = ControlApi.poll(this@ScreenCaptureService)
-                    val requests = response.optJSONArray("requests")
-                    if (requests != null) {
-                        for (i in 0 until requests.length()) {
-                            val request = requests.getJSONObject(i)
-                            if (request.optString("action") == "stop_session") {
-                                ControlApi.decide(this@ScreenCaptureService, request.optString("id"), true)
-                                stopCapture(remoteAlreadyStopped = true)
-                                return@launch
-                            }
-                        }
-                    }
-                } catch (error: Exception) {
-                    if (error.message?.contains("Chave do dispositivo inválida") == true) {
-                        stopCapture(remoteAlreadyStopped = true)
-                        return@launch
-                    }
-                }
-                delay(3000)
-            }
-        }
-    }
-
     private fun stopCapture(remoteAlreadyStopped: Boolean = false) {
         if (shuttingDown) return
         shuttingDown = true
         virtualDisplay?.release()
         virtualDisplay = null
+        remoteDisplayId = null
         imageReader?.close()
         imageReader = null
         projection?.stop()
@@ -211,6 +189,7 @@ class ScreenCaptureService : LifecycleService() {
 
     override fun onDestroy() {
         virtualDisplay?.release()
+        remoteDisplayId = null
         imageReader?.close()
         projection?.stop()
         imageThread?.quitSafely()
