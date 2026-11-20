@@ -179,6 +179,8 @@ class MainActivity : ComponentActivity() {
                                     "Autorização geral ativa. Ative o serviço de Acessibilidade nas configurações para abrir apps, tocar, digitar e navegar."
                                 Build.VERSION.SDK_INT < Build.VERSION_CODES.R ->
                                     "Este aparelho pode instalar o Projeto Super, mas o controle isolado de aplicativos exige Android 11 ou superior."
+                                !context.packageManager.hasSystemFeature(PackageManager.FEATURE_ACTIVITIES_ON_SECONDARY_DISPLAYS) ->
+                                    "Este aparelho não declara suporte a atividades em displays secundários; o controle isolado não estará disponível."
                                 else ->
                                     "Telefone vinculado e autorizado. Apps originais podem ser controlados no display virtual; a tela física não é capturada."
                             }
