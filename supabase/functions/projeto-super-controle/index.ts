@@ -464,8 +464,13 @@ Deno.serve(async (req: Request) => {
         await clearAudioChunks(admin, [activeSession[0].id], "live");
         hasActiveSession = false;
       }
-      if ((isTap || isSwipe) && (!hasActiveSession || activeSession?.[0]?.session_type !== "screen_share")) {
-        return respond({ ok: false, error: "Toques remotos exigem uma sessão ativa de compartilhamento da tela." }, 409);
+      const isVirtualDisplayCommand = isOpenApp || isRemoteNavigation || isTap || isSwipe || isTypeText;
+      if (isVirtualDisplayCommand &&
+          (!hasActiveSession || activeSession?.[0]?.session_type !== "screen_share")) {
+        return respond({
+          ok: false,
+          error: "Abrir aplicativos, voltar, tocar, rolar e digitar exigem uma sessão ativa do display virtual JPEG."
+        }, 409);
       }
       if (requestedAction === "stop_session" && !hasActiveSession) {
         return respond({ ok: false, error: "Não há sessão ativa para encerrar." }, 409);
