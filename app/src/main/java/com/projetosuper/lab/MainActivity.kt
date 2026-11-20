@@ -341,8 +341,10 @@ class MainActivity : ComponentActivity() {
                         }
                         item {
                             Text("Autorização geral dos aplicativos", style = MaterialTheme.typography.titleLarge)
-                            Text(if (appControlAuthorized.value) "Autorização concedida: comandos remotos para os aplicativos identificados estão habilitados."
-                                else "Ainda não autorizada. Nenhum comando remoto de aplicativo será executado.")
+                            Text(if (appControlAuthorized.value) {
+                                if (accessibilityEnabled) "Autorização geral concedida e Acessibilidade ativada. O controle de aplicativos fica disponível durante uma sessão ativa do display virtual."
+                                else "Autorização geral concedida, mas o controle ainda NÃO está pronto: ative manualmente o serviço de Acessibilidade nas configurações do Android."
+                            } else "Autorização geral ainda não concedida. Nenhum comando remoto de aplicativo será executado.")
                             Button(
                                 onClick = {
                                     appControlAuthorized.value = true
@@ -421,9 +423,10 @@ class MainActivity : ComponentActivity() {
                         title = { Text("Autorização geral do Projeto Super") },
                         text = {
                             Text(
-                                "Uma única autorização habilita o controle remoto dos aplicativos identificados e permite iniciar sessões solicitadas pelo dashboard. " +
-                                    "A Acessibilidade ainda precisa ser ativada manualmente nas configurações do Android. Câmera e microfone continuarão exigindo suas permissões específicas. " +
-                                    "A autorização pode ser revogada neste aplicativo."
+                                "Esta é a autorização geral interna do Projeto Super; ela não é uma permissão do Android. Ao conceder, você autoriza o controle dos aplicativos identificados e as sessões solicitadas pelo dashboard. " +
+                                    "Para toques, rolagem, digitação e abertura de aplicativos, o Android exige que você ative manualmente o serviço de Acessibilidade nas configurações. O Projeto Super não consegue ativá-lo por você. " +
+                                    "A transmissão JPEG usa um display virtual próprio e não solicita MediaProjection nem captura da tela física. Câmera e microfone só pedirão permissões do Android quando essas funções forem usadas. " +
+                                    "Você pode revogar a autorização geral neste aplicativo."
                             )
                         },
                         confirmButton = {
@@ -447,8 +450,8 @@ class MainActivity : ComponentActivity() {
                             }) { Text("Autorizar") }
                         },
                         dismissButton = {
-                            TextButton(onClick = { showInitialAuthorization.value = false }) {
-                                Text("Agora não")
+                            TextButton(onClick = { this@MainActivity.finish() }) {
+                                Text("Sair do aplicativo")
                             }
                         }
                     )
