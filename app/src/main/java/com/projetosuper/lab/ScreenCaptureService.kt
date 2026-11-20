@@ -247,9 +247,18 @@ class ScreenCaptureService : LifecycleService() {
     }
 
     override fun onDestroy() {
+        getSharedPreferences("projeto_super_device", Context.MODE_PRIVATE)
+            .edit()
+            .remove(RemoteDisplayLauncher.PREF_DISPLAY_ID)
+            .remove(RemoteDisplayLauncher.PREF_DISPLAY_WIDTH)
+            .remove(RemoteDisplayLauncher.PREF_DISPLAY_HEIGHT)
+            .apply()
         virtualDisplay?.release()
+        virtualDisplay = null
         imageReader?.close()
+        imageReader = null
         imageThread?.quitSafely()
+        imageThread = null
         super.onDestroy()
     }
 }
