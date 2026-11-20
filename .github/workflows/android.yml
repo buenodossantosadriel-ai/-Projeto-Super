@@ -82,7 +82,7 @@ jobs:
           assert "remote_home" not in backend + dashboard + all_kotlin
           assert "Isso não é exigido apenas para enviar quadros JPEG" not in main
           assert "sessões de microfone exigem essa permissão" not in main
-          assert "POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED" not in main
+          assert "check(ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)" not in main
           assert '"microphone_live", "microphone_record" -> listOf(Manifest.permission.RECORD_AUDIO)' in main
           assert "Permita notificações para manter o indicador visível da sessão de áudio." not in main
           assert "Para abrir aplicativos, executar comandos remotos e enviar quadros JPEG da tela" in main
