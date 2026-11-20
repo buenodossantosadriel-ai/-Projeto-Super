@@ -58,11 +58,16 @@ class ScreenCaptureService : LifecycleService() {
             return START_NOT_STICKY
         }
         val incomingSessionId = intent?.getStringExtra(EXTRA_SESSION_ID).orEmpty()
-        if (projection != null) {
+        if (projection != null || shuttingDown) {
             if (incomingSessionId == sessionId) {
                 android.util.Log.i("ProjetoSuperScreen", "Solicitação duplicada ignorada para a sessão ativa.")
             } else {
                 android.util.Log.w("ProjetoSuperScreen", "Nova captura recusada enquanto outra sessão está ativa.")
+                if (incomingSessionId.isNotBlank()) {
+                    CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                        try { ControlApi.stopSession(this@ScreenCaptureService, incomingSessionId) } catch (_: Exception) {}
+                    }
+                }
             }
             return START_NOT_STICKY
         }
